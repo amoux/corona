@@ -20,7 +20,7 @@ class SpacySentenceTokenizer:
     ):
         """Spacy Sentence Tokenizer.
 
-        `out_file`: name of the file if tokenizenizing to file.
+        `out_file`: name of the output file if tokenizing to file.
         `nlp_model`: spaCy model to use for the tokenizer.
         `disable`: name of spaCy's pipeline components to disable.
         """

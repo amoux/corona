@@ -4,13 +4,12 @@ from typing import Iterable, List
 
 import pandas as pd
 
+from .indexing import CovidPapers, all_dataset_sources, all_sources_metadata
 from .jsonformatter import generate_clean_df
-from .papers_indexing import (CovidPapers, all_dataset_sources,
-                              all_sources_metadata)
 
 
 def normalize_whitespace(string: str):
-    """Normalize excessive whitespace from a string without formating the original form."""
+    """Normalize excessive whitespace."""
     LINEBREAK = re.compile(r"(\r\n|[\n\v])+")
     NONBREAKING_SPACE = re.compile(r"[^\S\n\v]+", flags=re.UNICODE)
 
@@ -18,21 +17,21 @@ def normalize_whitespace(string: str):
 
 
 def load_papers_with_text(
-    conv: CovidPapers, indices: List[int], keys: Iterable[str] = None
+    covid: CovidPapers,
+    indices: List[int],
+    keys: Iterable[str] = ("abstract", "body_text", "back_matter"),
 ):
     """For every paper grab its title and all the available texts.
 
     keys: Iterable of string sequences, if None, the default keys
-        will be used for obtaining texts: ('abstract', 'body_text', 'back_matter')
+        will be used for obtaining texts: ('abstract', 'body_text',
+        'back_matter')
     """
-    if not isinstance(conv, CovidPapers):
-        raise ValueError(f"{type(conv)} is not an instance of CovidPapers.")
-
-    if keys is None:
-        keys = ("abstract", "body_text", "back_matter")
+    if not isinstance(covid, CovidPapers):
+        raise ValueError(f"{type(covid)} is not an instance of CovidPapers.")
 
     batch = []
-    papers = conv.load_papers(indices=indices)
+    papers = covid.load_papers(indices=indices)
     for i, paper in zip(indices, papers):
         title = paper["metadata"]["title"]
         texts = []
@@ -63,37 +62,42 @@ def convert_sources_to_csv(out_dir="data", source_paths: List[Path] = None):
     has_full_text = metadata.loc[metadata["has_full_text"] == True, ["sha"]]
     has_full_text = list(set(has_full_text["sha"].to_list()))
 
-    def indices_with_fulltext(conv: CovidPapers) -> List[int]:
-        """Filter only the paper-id's with True in has_full_text."""
+    def indices_with_fulltext(covid: CovidPapers) -> List[int]:
+        """Filter only paper-id's if full-text is available in the metadata."""
         text_indices = []
         for paper_id in has_full_text:
-            if paper_id in conv.paper_index:
-                index = conv.paper_index[paper_id]
+            if paper_id in covid.paper_index:
+                index = covid.paper_index[paper_id]
                 if index in text_indices:
                     continue
                 text_indices.append(index)
         return text_indices
 
     for source_path in source_paths:
-        conv = CovidPapers(source_path)
-        indices = indices_with_fulltext(conv)
-        batches = conv.load_papers(indices)
-
+        covid = CovidPapers(source_path)
+        indices = indices_with_fulltext(covid)
+        batches = covid.load_papers(indices)
         dataframe = generate_clean_df(batches)
-        file_path = out_dir.joinpath(f"{conv.source_name}.csv")
+        file_path = out_dir.joinpath(f"{covid.source_name}.csv")
         dataframe.to_csv(file_path, index=False)
-
         print(
             "All {} files for {} saved in {}".format(
-                conv.num_papers, conv.source_name, file_path
+                covid.num_papers, covid.source_name, file_path
             )
         )
 
 
-def concat_csv_files(source_dir: str, out_dir="data", return_df=False):
+def concat_csv_files(
+    source_dir: str,
+    file_name="covid-lg.csv",
+    out_dir="data",
+    drop_cols=["raw_authors", "raw_bibliography"],
+    return_df=False,
+):
     """Concat all CSV files into one single file.
 
-    return_df: If True, saving to file is ignored the concat Dataframe returned.
+    return_df: If True, saving to file is ignored and the pandas
+        DataFrame instance holding the data is returned.
 
     Usage:
         >>> concat_csv_files('path/to/csv-files-dir/', out_dir='data')
@@ -101,15 +105,15 @@ def concat_csv_files(source_dir: str, out_dir="data", return_df=False):
     dataframes = []
     for csv_file in Path(source_dir).glob("*.csv"):
         df = pd.read_csv(csv_file, index_col=None, header=0)
-        df.drop(columns=["raw_authors", "raw_bibliography"], inplace=True)
+        df.drop(columns=drop_cols, inplace=True)
         dataframes.append(df)
 
     master_df = pd.concat(dataframes, axis=0, ignore_index=True)
-    if return_df:
-        return master_df
-    else:
+    if not return_df:
         out_dir = Path(out_dir)
         if not out_dir.exists():
             out_dir.mkdir(parents=True)
-        file_path = out_dir.joinpath("covid-master-lg.csv")
+        file_path = out_dir.joinpath(file_name)
         master_df.to_csv(file_path, index=False)
+    else:
+        return master_df

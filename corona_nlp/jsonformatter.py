@@ -67,8 +67,8 @@ def format_bib(bibs):
     if type(bibs) == dict:
         bibs = list(bibs.values())
     bibs = deepcopy(bibs)
-    formatted = []
 
+    formatted = []
     for bib in bibs:
         bib["authors"] = format_authors(bib["authors"], with_affiliation=False)
         formatted_ls = [str(bib[k]) for k in ["title", "authors", "venue", "year"]]

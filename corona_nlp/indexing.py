@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from typing import Dict, List
 
-base_dir = Path("data/CORD-19-research-challenge/2020-03-13")
+base_dir = Path("../data/CORD-19-research-challenge/2020-03-13")
 biorxiv_medrxiv = base_dir.joinpath("biorxiv_medrxiv/biorxiv_medrxiv/")
 comm_use_subset = base_dir.joinpath("comm_use_subset/comm_use_subset/")
 pmc_custom_license = base_dir.joinpath("pmc_custom_license/pmc_custom_license/")
@@ -17,7 +17,6 @@ all_dataset_sources = [
 
 
 class CovidPapers:
-
     def __init__(self, source_dir: str):
         self.source_path: str = None
         self.paper_index: Dict[str, int] = {}
@@ -29,9 +28,8 @@ class CovidPapers:
                 self._map_paper_ids(source_files)
                 self.source_path = source
             else:
-                raise ValueError(
-                    "The path to directory is not valid" ", got {}.".format(source_dir)
-                )
+                raise ValueError("The path to directory is not valid"
+                                 ", got {}.".format(source_dir))
 
     @property
     def num_papers(self):

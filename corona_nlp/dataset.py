@@ -108,7 +108,6 @@ class SciBertTransformersDataset(Dataset):
         add_special_tokens: bool = True,
         overwrite_cache=False,
     ):
-        """SciBert Model, Tokenizer, and Dataset (all in one fuck it)."""
         file_path = Path(file_path)
         assert file_path.is_file()
 
