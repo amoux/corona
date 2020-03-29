@@ -4,7 +4,7 @@ from typing import Iterable, List
 
 import pandas as pd
 
-from .indexing import CovidPapers, all_dataset_sources, all_sources_metadata
+from .indexing import PaperIndexing, all_dataset_sources, all_sources_metadata
 from .jsonformatter import generate_clean_df
 
 
@@ -17,7 +17,7 @@ def normalize_whitespace(string: str):
 
 
 def load_papers_with_text(
-    covid: CovidPapers,
+    covid: PaperIndexing,
     indices: List[int],
     keys: Iterable[str] = ("abstract", "body_text", "back_matter"),
 ):
@@ -27,8 +27,8 @@ def load_papers_with_text(
         will be used for obtaining texts: ('abstract', 'body_text',
         'back_matter')
     """
-    if not isinstance(covid, CovidPapers):
-        raise ValueError(f"{type(covid)} is not an instance of CovidPapers.")
+    if not isinstance(covid, PaperIndexing):
+        raise ValueError(f"{type(covid)} is not an instance of PaperIndexing.")
 
     batch = []
     papers = covid.load_papers(indices=indices)
@@ -62,7 +62,7 @@ def convert_sources_to_csv(out_dir="data", source_paths: List[Path] = None):
     has_full_text = metadata.loc[metadata["has_full_text"] == True, ["sha"]]
     has_full_text = list(set(has_full_text["sha"].to_list()))
 
-    def indices_with_fulltext(covid: CovidPapers) -> List[int]:
+    def indices_with_fulltext(covid: PaperIndexing) -> List[int]:
         """Filter only paper-id's if full-text is available in the metadata."""
         text_indices = []
         for paper_id in has_full_text:
@@ -74,7 +74,7 @@ def convert_sources_to_csv(out_dir="data", source_paths: List[Path] = None):
         return text_indices
 
     for source_path in source_paths:
-        covid = CovidPapers(source_path)
+        covid = PaperIndexing(source_path)
         indices = indices_with_fulltext(covid)
         batches = covid.load_papers(indices)
         dataframe = generate_clean_df(batches)

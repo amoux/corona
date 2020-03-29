@@ -2,3 +2,12 @@
 data/*
 *notebooks/*.ipynb_checkpoints
 *.vscode
+notebooks/*Untitled*
+notebooks/sents-md.txt
+notebooks/covid-vocab
+models
+vocab
+qaam-mypy_cache
+scripts
+corona_nlp/qaam.py
+notebooks/qaam-cache/data/data_obj

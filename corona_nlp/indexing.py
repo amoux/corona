@@ -1,4 +1,5 @@
 import json
+import numpy as np
 from pathlib import Path
 from typing import Dict, List
 
@@ -16,13 +17,16 @@ all_dataset_sources = [
 ]
 
 
-class CovidPapers:
+class PaperIndexing:
     def __init__(self, source_dir: str):
         self.source_path: str = None
         self.paper_index: Dict[str, int] = {}
         self.index_paper: Dict[int, str] = {}
+
         if isinstance(source_dir, str) or isinstance(source_dir, Path):
             source = Path(source_dir)
+            if not source.exists():
+                source = Path("/".join(source.parts[1:]))
             if source.is_dir():
                 source_files = [file for file in source.glob("*.json")]
                 self._map_paper_ids(source_files)
@@ -30,6 +34,14 @@ class CovidPapers:
             else:
                 raise ValueError("The path to directory is not valid"
                                  ", got {}.".format(source_dir))
+
+    def __call__(self, samples: int, shuffle=False):
+        if isinstance(samples, int):
+            k = self.num_papers if samples > self.num_papers else samples
+            samples = list(range(1, k + 1))
+        if shuffle:
+            np.random.shuffle(samples)
+        return self.load_papers(indices=samples)
 
     @property
     def num_papers(self):
@@ -89,5 +101,14 @@ class CovidPapers:
             else:
                 raise ValueError("Paper ID not of type List[str].")
 
+    def __getitem__(self, item):
+        if isinstance(item, int):
+            return self.index_paper[item]
+        elif isinstance(item, str):
+            return self.paper_index[item]
+
+    def __len__(self):
+        return self.num_papers
+
     def __repr__(self):
-        return f"<COVID-19({self.source_name}, papers={self.num_papers})>"
+        return f"<PaperIndexing({self.source_name}, papers={self.num_papers})>"
