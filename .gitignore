@@ -2,6 +2,7 @@
 data/*
 *notebooks/*.ipynb_checkpoints
 *.vscode
+.src/covid-papers-browser
 notebooks/*Untitled*
 notebooks/sents-md.txt
 notebooks/covid-vocab
@@ -17,4 +18,3 @@ notebooks/pytorch-dataset-batching (todo).ipynb
 notebooks/faiss-trained-indices/embeddings.index
 notebooks/my_gdrive/scibert_nli.zip
 notebooks/Faiss-Indexing ( todo ).ipynb
-src/covid-papers-browser
