@@ -5,9 +5,15 @@ data/*
 notebooks/*Untitled*
 notebooks/sents-md.txt
 notebooks/covid-vocab
+notebooks/data*
 models
 vocab
 qaam-mypy_cache
-scripts
+scripts/encoding.py
+scripts/finetune.py
 corona_nlp/qaam.py
 notebooks/qaam-cache/data/data_obj
+notebooks/pytorch-dataset-batching (todo).ipynb
+notebooks/faiss-trained-indices/embeddings.index
+notebooks/my_gdrive/scibert_nli.zip
+notebooks/Faiss-Indexing ( todo ).ipynb
