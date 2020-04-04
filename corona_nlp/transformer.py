@@ -22,9 +22,11 @@ class SentenceTransformer(nn.Sequential):
     ):
         """Sentence Transformer Class.
 
-        NOTE: This class has been modied to accommodate some performace
-        improvements from the original SentenceTransformers class. And
-        some features have been removed!
+        NOTE: This class is slightly modified from the original version with
+        minor performance enhancements. Like eliminating constant calls of the
+        len function on all the sentences in a loop - the consequences of this
+        alone; are noticeable when the number of samples is > 30k thousand.
+
         Original source: https://github.com/UKPLab/sentence-transformers
 
         model_path: path to the directory with the config and modules file.
@@ -77,15 +79,14 @@ class SentenceTransformer(nn.Sequential):
         self.eval()
         sorted_lengths = np.argsort([len(sent) for sent in sentences])
         n_samples = sorted_lengths.size
-        sentences = iter(sentences)
 
         embeddings = []
         for i in tqdm(range(0, n_samples, batch_size), desc="batches"):
             start = i
             end = min(start + batch_size, n_samples)
             batch_tokens, maxlen = [], 0
-            for _ in sorted_lengths[start:end]:
-                string = next(sentences)
+            for j in sorted_lengths[start:end]:
+                string = sentences[j]
                 tokens = self.tokenize(string)
                 maxlen = max(maxlen, len(tokens))
                 batch_tokens.append(tokens)

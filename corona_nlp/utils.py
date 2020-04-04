@@ -1,6 +1,8 @@
-from pathlib import Path
-from typing import Any, List, Tuple, IO
 import pickle
+from collections import namedtuple
+from pathlib import Path
+from typing import IO, Any, List, Tuple
+
 import numpy as np
 
 
@@ -53,3 +55,17 @@ class DataIO:
         file = path.joinpath(file_name)
         with file.open("rb") as pkl:
             return pickle.load(pkl)
+
+
+def calc_chunksize_info(workers: int, n_samples: int, factor=4):
+    """Calculate chunksize numbers."""
+    Chunkinfo = namedtuple(
+        'Chunkinfo', ['workers', 'n_samples', 'n_chunks',
+                      'chunksize', 'last_chunk'])
+    chunksize, extra = divmod(n_samples, workers * factor)
+    if extra:
+        chunksize += 1
+    n_chunks = n_samples // chunksize + (n_samples % chunksize > 0)
+    last_chunk = n_samples % chunksize or chunksize
+    return Chunkinfo(workers, n_samples,
+                     n_chunks, chunksize, last_chunk)
