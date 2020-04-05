@@ -1,16 +1,16 @@
 import sys
 sys.path.append("../")
-from pathlib import Path
 
+from pathlib import Path
 import numpy as np
 from tqdm import tqdm
 
-from corona_nlp.indexing import PaperIndexing, all_dataset_sources
+from corona_nlp.indexing import PaperIndexing
 from corona_nlp.preprocessing import (load_papers_with_text,
                                       normalize_whitespace)
 from corona_nlp.tokenizer import SpacySentenceTokenizer
 from corona_nlp.transformer import SentenceTransformer
-from corona_nlp.utils import DataIO
+from corona_nlp.utils import DataIO, load_dataset_paths
 
 
 source_id = 0
@@ -19,15 +19,17 @@ min_strlen = 20
 max_strlen = 2000
 batch_size = 9
 text_keys = ("abstract", "body_text")
-scibert_nli_model = "/home/carlos/transformer_models/scibert-nli/"
-
 out_dir = "../data/cluster_data/"
+scibert_nli_model = "/home/carlos/transformer_models/scibert-nli/"
+cord_dataset_path = "CORD-19-research-challenge/2020-03-13/"
+
 out_dir = Path(out_dir)
 if not out_dir.is_dir():
     out_dir.mkdir(parents=True)
 
 if __name__ == '__main__':
-    index = PaperIndexing(all_dataset_sources[source_id])
+    source = load_dataset_paths(cord_dataset_path)
+    index = PaperIndexing(source.dirs[source_id])
     print(f"loaded source: \n{index}\n")
 
     max_papers = index.num_papers if max_papers == -1 else max_papers

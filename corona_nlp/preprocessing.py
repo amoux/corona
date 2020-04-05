@@ -18,7 +18,7 @@ def normalize_whitespace(string: str):
 
 
 def load_papers_with_text(
-    covid: PaperIndexing,
+    index: PaperIndexing,
     indices: List[int],
     keys: Iterable[str] = ("abstract", "body_text", "back_matter"),
 ):
@@ -28,11 +28,11 @@ def load_papers_with_text(
         will be used for obtaining texts: ('abstract', 'body_text',
         'back_matter')
     """
-    if not isinstance(covid, PaperIndexing):
-        raise ValueError(f"{type(covid)} is not an instance of PaperIndexing.")
+    if not isinstance(index, PaperIndexing):
+        raise ValueError(f"{type(index)} is not an instance of PaperIndexing.")
 
     batch = []
-    papers = covid.load_papers(indices=indices)
+    papers = index.load_papers(indices)
     for i, paper in zip(indices, papers):
         title = paper["metadata"]["title"]
         texts = []
@@ -43,13 +43,14 @@ def load_papers_with_text(
                     continue
                 texts.append(string)
         batch.append({"id": i, "title": title, "texts": texts})
-
     return batch
 
 
-def papers_to_csv(sources: Union[str, Cord19Paths],
-                  dirs: Tuple[Sequence[str]] = ('all',),
-                  out_dir: str = "data"):
+def papers_to_csv(
+    sources: Union[str, Cord19Paths],
+    dirs: Tuple[Sequence[str]] = ('all',),
+    out_dir: str = 'data',
+):
     """Convert one or more directories with json files into a csv file(s).
 
     `sources`: Path to the `CORD-19-research-challenge/2020-03-13/` dataset
