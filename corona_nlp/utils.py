@@ -1,9 +1,17 @@
 import pickle
 from collections import namedtuple
 from pathlib import Path
-from typing import IO, Any, List, Tuple
+from typing import IO, Any, List, NamedTuple, Tuple
 
 import numpy as np
+
+Cord19Paths = NamedTuple(
+    'Cord19Paths', [
+        ('readme', Path), ('metadata', Path), ('dirs', List[Path]),
+        ('pmc_custom_license', Path),
+        ('biorxiv_medrxiv', Path),
+        ('comm_use_subset', Path),
+        ('noncomm_use_subset', Path), ])
 
 
 def split_dataset(dataset: List[Any],
@@ -41,19 +49,18 @@ def save_train_test(texts: List[str],
 
 class DataIO:
     @staticmethod
-    def save_data(file_name: str, data_obj: Any, dirname="data") -> IO:
-        path = Path(dirname).absolute()
-        if not path.exists():
-            path.mkdir(parents=True)
-        file = path.joinpath(file_name)
-        with file.open("wb") as pkl:
+    def save_data(file_path: str, data_obj: Any) -> IO:
+        file_path = Path(file_path)
+        if file_path.is_dir():
+            if not file_path.exists():
+                file_path.mkdir(parents=True)
+        with file_path.open("wb") as pkl:
             pickle.dump(data_obj, pkl, pickle.HIGHEST_PROTOCOL)
 
     @staticmethod
-    def load_data(file_name: str, dirname="data") -> Any:
-        path = Path(dirname).absolute()
-        file = path.joinpath(file_name)
-        with file.open("rb") as pkl:
+    def load_data(file_path: str) -> Any:
+        file_path = Path(file_path)
+        with file_path.open("rb") as pkl:
             return pickle.load(pkl)
 
 
@@ -69,3 +76,35 @@ def calc_chunksize_info(workers: int, n_samples: int, factor=4):
     last_chunk = n_samples % chunksize or chunksize
     return Chunkinfo(workers, n_samples,
                      n_chunks, chunksize, last_chunk)
+
+
+def load_dataset_paths(basedir: str) -> Cord19Paths:
+    """Return an organized representation of all paths in the dataset.
+
+    ```python
+    basedir = "path/to/CORD-19-research-challenge/2020-03-13/"
+    load_dataset_paths(basedir)._fields
+    ...
+        ('readme', 'metadata', 'dirs',
+        'pmc_custom_license',
+        'biorxiv_medrxiv',
+        'comm_use_subset',
+        'noncomm_use_subset')
+    ```
+    """
+    basedir = Path(basedir)
+    paths, filesdir = {}, []
+    for p in basedir.iterdir():
+        if p.suffix == '.csv':
+            paths['metadata'] = p
+        elif p.suffix == '.readme':
+            paths['readme'] = p
+        elif p.is_dir():
+            dirdir = p.joinpath(p.name)
+            if dirdir.is_dir():
+                filesdir.append(dirdir)
+
+    paths['dirs'] = filesdir
+    for p in filesdir:
+        paths[p.name] = p
+    return Cord19Paths(**paths)

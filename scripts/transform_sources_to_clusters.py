@@ -12,53 +12,58 @@ from corona_nlp.tokenizer import SpacySentenceTokenizer
 from corona_nlp.transformer import SentenceTransformer
 from corona_nlp.utils import DataIO
 
-source_id = 1  # source ids: 0 to 4
+
+source_id = 0
+max_papers = -1
+min_strlen = 20
+max_strlen = 2000
+batch_size = 9
 text_keys = ("abstract", "body_text")
-min_strlen = 10
-max_strlen = 1000
-batch_size = 1024
 scibert_nli_model = "/home/carlos/transformer_models/scibert-nli/"
-output_dir = "data/cluster-data"
 
-cord19 = PaperIndexing(all_dataset_sources[source_id])
-print(f"loaded source:\n{cord19}\n")
-indices = list(range(1, cord19.num_papers))
-papers_with_text = iter(load_papers_with_text(covid=cord19,
-                                              indices=indices,
-                                              keys=text_keys))
-# transform all texts to sentences.
-sentence_tokenizer = SpacySentenceTokenizer()
-print(f"tokenizing texts from: {cord19.num_papers} papers.")
+out_dir = "../data/cluster_data/"
+out_dir = Path(out_dir)
+if not out_dir.is_dir():
+    out_dir.mkdir(parents=True)
 
-sentences = []
-for paper in tqdm(papers_with_text, desc="papers"):
-    for line in sorted(set(paper["texts"])):
-        line = normalize_whitespace(line)
-        if len(line) <= max_strlen:
-            sents = sentence_tokenizer.tokenize(line)
-            for string in sents:
-                string = normalize_whitespace(string.text)
-                if len(string) >= min_strlen:
-                    sentences.append(string)
+if __name__ == '__main__':
+    index = PaperIndexing(all_dataset_sources[source_id])
+    print(f"loaded source: \n{index}\n")
 
-sentences = list(set(sentences))
-print(f"number of sentences: {len(sentences)}")
+    max_papers = index.num_papers if max_papers == -1 else max_papers
+    assert max_papers == index.num_papers
+    indices = list(range(1, max_papers + 1))
+    papers = iter(load_papers_with_text(index, indices, text_keys))
+    # preprocessing steps to normalize, clean, reduce noise,
+    # and overhead when encoding sequences to embeddings
+    sentences = []
+    tokenizer = SpacySentenceTokenizer()
+    for paper in tqdm(papers, desc="papers"):
+        for line in sorted(set(paper["texts"])):
+            line = normalize_whitespace(line)
+            if len(line) <= max_strlen:
+                tokens = tokenizer.tokenize(line)
+                for string in tokens:
+                    string = normalize_whitespace(string.text)
+                    if len(string) >= min_strlen:
+                        sentences.append(string)
 
-# encode all sentences to the transformer model
-transformer = SentenceTransformer(scibert_nli_model)
-embeddings = transformer.encode(sentences, batch_size=batch_size)
-embeddings = np.array(embeddings)
-print(f"done embedding sentences: {embeddings.shape}")
+    sentences = list(set(sentences))
+    print(f"number of sentences: {len(sentences)}")
 
-# save the embeddings and sentences as a pickle files
-output_dir = Path(output_dir)
-if not output_dir.exists():
-    output_dir.mkdir(parents=True)
+    io = DataIO()
+    fp = out_dir.joinpath(f"sents_{index.source_name}.pkl")
+    io.save_data(fp, sentences)
+    print(f"saved sentences in path: {fp}")
+    del sentences
 
-file_name = f"embedd_{cord19.source_name}"
-DataIO.save_data(file_name, embeddings, output_dir)
-print(f"saved {file_name} in path: {output_dir}")
+    # encode all sentences to the transformer model
+    transformer = SentenceTransformer(scibert_nli_model)
+    embedding = transformer.encode(sentences=io.load_data(fp),
+                                   batch_size=batch_size)
 
-file_name = f"sents_{cord19.source_name}"
-DataIO.save_data(file_name, sentences, output_dir)
-print(f"saved {file_name} in path: {output_dir}")
+    print(f"done embedding sentences: {embedding.shape}")
+
+    fp = out_dir.joinpath(f"embedd_{index.source_name}")
+    np.savez_compressed(fp, embedding=embedding)
+    print(f"saved embedding matrix in path: {fp}")

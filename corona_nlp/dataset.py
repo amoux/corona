@@ -21,22 +21,6 @@ BERT_MODELS_UNCASED = {
 }
 
 
-def split_dataset(dataset: List[Any],
-                  subset: float = 0.5,
-                  samples: int = None,
-                  seed: int = 12345) -> Tuple[List[Any], List[Any]]:
-    """Split an iterable dataset into a train and evaluation sets."""
-    np.random.seed(seed)
-    np.random.shuffle(dataset)
-    maxlen = len(dataset)
-    if not samples or samples > maxlen:
-        samples = maxlen
-    split = int(subset * samples)
-    train_data = dataset[:split]
-    eval_data = dataset[split:samples]
-    return train_data, eval_data
-
-
 class TextDataset(Dataset):
 
     def __init__(self, file_path: str, model="scibert", max_length=512, overwrite_cache=False):
@@ -142,33 +126,3 @@ class LineByLineTextDataset(Dataset):
 
     def load_model(self) -> AutoModel:
         return AutoModel.from_pretrained(self.model_type)
-
-
-# class LineByLineTextDataset(Dataset):
-
-#     def __init__(self, file_path: str, model="scibert", max_length=512):
-#         file_path = Path(file_path)
-#         assert file_path.is_file()
-
-#         self.model_type = BERT_MODELS_UNCASED[model]
-#         self.samples = []
-
-#         with file_path.open("r", encoding="utf-8") as file:
-#             for line in tqdm(file, desc="lines", unit=""):
-#                 strings = line.splitlines()
-#                 for string in strings:
-#                     self.samples.append(string)
-
-#         tokenizer = AutoTokenizer.from_pretrained(self.model_type)
-#         self.samples = tokenizer.batch_encode_plus(self.samples,
-#                                                    add_special_tokens=True,
-#                                                    max_length=max_length)["input_ids"]
-
-#     def __len__(self):
-#         return len(self.samples)
-
-#     def __getitem__(self, item):
-#         return torch.tensor(self.samples[item], dtype=torch.long)
-
-#     def load_tokenizer(self) -> AutoTokenizer:
-#         return AutoTokenizer.from_pretrained(self.model_type)

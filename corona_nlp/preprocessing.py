@@ -1,11 +1,12 @@
 import re
 from pathlib import Path
-from typing import Iterable, List
+from typing import Iterable, List, NamedTuple, Sequence, Tuple, Union
 
 import pandas as pd
 
-from .indexing import PaperIndexing, all_dataset_sources, all_sources_metadata
+from .indexing import PaperIndexing
 from .jsonformatter import generate_clean_df
+from .utils import Cord19Paths, load_dataset_paths
 
 
 def normalize_whitespace(string: str):
@@ -46,45 +47,59 @@ def load_papers_with_text(
     return batch
 
 
-def convert_sources_to_csv(out_dir="data", source_paths: List[Path] = None):
-    """Convert all json-files from all or some directories.
+def papers_to_csv(sources: Union[str, Cord19Paths],
+                  dirs: Tuple[Sequence[str]] = ('all',),
+                  out_dir: str = "data"):
+    """Convert one or more directories with json files into a csv file(s).
 
-    source_paths: A list of paths to the directory holding the json files.
-        If None, All papers sources will be converted and saved as csv.
+    `sources`: Path to the `CORD-19-research-challenge/2020-03-13/` dataset
+        directory, or an instance of `Cord19Paths`.
+
+    `dirs`: Use `all` for all available directories or a sequence of the names.
+        You can pass the full name or the first three characters e.g., `('pmc
+        ', 'bio', 'com', 'non')`
+
+    `out_dir`: Directory where the csv files will be saved.
     """
-    if source_paths is None:
-        source_paths = all_dataset_sources
+    if isinstance(sources, str):
+        if not Path(sources).exists():
+            raise ValueError("Invalid path, got {sources}")
+        sources = load_dataset_paths(sources)
+    assert isinstance(sources, Cord19Paths)
+
     out_dir = Path(out_dir)
-    if not out_dir.exists():
+    if not out_dir.is_dir():
         out_dir.mkdir(parents=True)
 
-    metadata = pd.read_csv(all_sources_metadata)
+    metadata = pd.read_csv(sources.metadata)
     has_full_text = metadata.loc[metadata["has_full_text"] == True, ["sha"]]
     has_full_text = list(set(has_full_text["sha"].to_list()))
 
-    def indices_with_fulltext(covid: PaperIndexing) -> List[int]:
-        """Filter only paper-id's if full-text is available in the metadata."""
-        text_indices = []
+    def with_full_text(index: PaperIndexing) -> List[int]:
+        # filter only paper-id's if full-text is available in the metadata
+        indices = []
         for paper_id in has_full_text:
-            if paper_id in covid.paper_index:
-                index = covid.paper_index[paper_id]
-                if index in text_indices:
+            if paper_id in index.paper_index:
+                paper_id = index[paper_id]
+                if paper_id in indices:
                     continue
-                text_indices.append(index)
-        return text_indices
+                indices.append(paper_id)
+        return indices
 
-    for source_path in source_paths:
-        covid = PaperIndexing(source_path)
-        indices = indices_with_fulltext(covid)
-        batches = covid.load_papers(indices)
-        dataframe = generate_clean_df(batches)
-        file_path = out_dir.joinpath(f"{covid.source_name}.csv")
-        dataframe.to_csv(file_path, index=False)
-        print(
-            "All {} files for {} saved in {}".format(
-                covid.num_papers, covid.source_name, file_path
-            )
-        )
+    if len(dirs) == 4 or 'all' in dirs:
+        sources = sources.dirs
+    else:
+        sources = [d for d in sources.dirs if d.name[:3] in dirs]
+
+    for path in sources:
+        index = PaperIndexing(path)
+        papers = index.load_papers(with_full_text(index))
+        df = generate_clean_df(papers)
+
+        filepath = out_dir.joinpath(f"{index.source_name}.csv")
+        df.to_csv(filepath, index=False)
+        print("All {} files from directory {} saved in: {}".format(
+            index.num_papers, index.source_name, filepath))
 
 
 def concat_csv_files(

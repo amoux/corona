@@ -3,19 +3,6 @@ import numpy as np
 from pathlib import Path
 from typing import Dict, List
 
-base_dir = Path("../data/CORD-19-research-challenge/2020-03-13")
-biorxiv_medrxiv = base_dir.joinpath("biorxiv_medrxiv/biorxiv_medrxiv/")
-comm_use_subset = base_dir.joinpath("comm_use_subset/comm_use_subset/")
-pmc_custom_license = base_dir.joinpath("pmc_custom_license/pmc_custom_license/")
-noncomm_use_subset = base_dir.joinpath("noncomm_use_subset/noncomm_use_subset/")
-all_sources_metadata = base_dir.joinpath("all_sources_metadata_2020-03-13.csv")
-all_dataset_sources = [
-    biorxiv_medrxiv,
-    comm_use_subset,
-    pmc_custom_license,
-    noncomm_use_subset,
-]
-
 
 class PaperIndexing:
     def __init__(self, source_dir: str):
