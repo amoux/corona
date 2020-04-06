@@ -1,3 +1,12 @@
+"""Code Credit
+* The code in this module has not been modified from the original version.
+
+Title  : CORD-19: EDA, parse JSON and generate clean CSV
+Date   : 2020
+Author : xhlulu
+Source : https://www.kaggle.com/xhlulu/cord-19-eda-parse-json-and-generate-clean-csv
+"""
+
 import json
 import os
 from copy import deepcopy

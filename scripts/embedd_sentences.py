@@ -36,6 +36,7 @@ if __name__ == '__main__':
     assert max_papers == index.num_papers
     indices = list(range(1, max_papers + 1))
     papers = iter(load_papers_with_text(index, indices, text_keys))
+
     # preprocessing steps to normalize, clean, reduce noise,
     # and overhead when encoding sequences to embeddings
     sentences = []
@@ -63,7 +64,6 @@ if __name__ == '__main__':
     transformer = SentenceTransformer(scibert_nli_model)
     embedding = transformer.encode(sentences=io.load_data(fp),
                                    batch_size=batch_size)
-
     print(f"done embedding sentences: {embedding.shape}")
 
     fp = out_dir.joinpath(f"embedd_{index.source_name}")
