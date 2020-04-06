@@ -12,13 +12,14 @@ from corona_nlp.tokenizer import SpacySentenceTokenizer
 from corona_nlp.transformer import SentenceTransformer
 from corona_nlp.utils import DataIO, load_dataset_paths
 
-
-source_id = 0
+# datasets available: ('pmc', 'bio', 'com', 'non')
+dataset = "pmc"
 max_papers = -1
 min_strlen = 20
 max_strlen = 2000
 batch_size = 9
 text_keys = ("abstract", "body_text")
+
 out_dir = "../data/cluster_data/"
 scibert_nli_model = "/home/carlos/transformer_models/scibert-nli/"
 cord_dataset_path = "CORD-19-research-challenge/2020-03-13/"
@@ -29,7 +30,8 @@ if not out_dir.is_dir():
 
 if __name__ == '__main__':
     source = load_dataset_paths(cord_dataset_path)
-    index = PaperIndexing(source.dirs[source_id])
+    dataset = [p for p in source.dirs if p.name[:3] == dataset]
+    index = PaperIndexing(dataset[0])
     print(f"loaded source: \n{index}\n")
 
     max_papers = index.num_papers if max_papers == -1 else max_papers
