@@ -35,7 +35,7 @@ if __name__ == '__main__':
     print(f"loaded source: \n{index}\n")
 
     max_papers = index.num_papers if max_papers == -1 else max_papers
-    assert max_papers == index.num_papers
+    assert max_papers <= index.num_papers
     indices = list(range(1, max_papers + 1))
     papers = iter(load_papers_with_text(index, indices, text_keys))
 
