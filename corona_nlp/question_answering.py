@@ -40,7 +40,7 @@ def summarize(texts: Union[str, List[str]],
         used. The summarization quality improves the larger the model.
         For accuracy I recommend using `en_core_web_md`.
     `spacy_nlp`: Use an existing `spacy.lang.en.English` instance.
-        The object is usually refereed as `nlp`. Otherwise, a new
+        The object is usually referred as `nlp`. Otherwise, a new
         instance will be loaded (which can take some time!).
     """
     nlp, doc, stop_words = (None, None, stop_words)
