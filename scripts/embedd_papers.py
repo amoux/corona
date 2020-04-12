@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 from tqdm import tqdm
 
-from corona_nlp.indexing import PaperIndexing
+from corona_nlp.indexing import PaperIndexer
 from corona_nlp.preprocessing import (load_papers_with_text,
                                       normalize_whitespace)
 from corona_nlp.tokenizer import SpacySentenceTokenizer
@@ -31,7 +31,7 @@ if not out_dir.is_dir():
 if __name__ == '__main__':
     source = load_dataset_paths(cord_dataset_path)
     dataset = [p for p in source.dirs if p.name[:3] == dataset]
-    index = PaperIndexing(dataset[0])
+    index = PaperIndexer(dataset[0])
     print(f"loaded source: \n{index}\n")
 
     max_papers = index.num_papers if max_papers == -1 else max_papers

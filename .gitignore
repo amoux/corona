@@ -12,7 +12,6 @@ vocab
 qaam-mypy_cache
 scripts/encoding.py
 scripts/finetune.py
-corona_nlp/qaam.py
 notebooks/qaam-cache/data/data_obj
 notebooks/pytorch-dataset-batching (todo).ipynb
 notebooks/faiss-trained-indices/embeddings.index

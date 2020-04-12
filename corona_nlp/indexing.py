@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Dict, List
 
 
-class PaperIndexing:
+class PaperIndexer:
     def __init__(self, source_dir: str):
         self.source_path: str = None
         self.paper_index: Dict[str, int] = {}
@@ -98,4 +98,4 @@ class PaperIndexing:
         return self.num_papers
 
     def __repr__(self):
-        return f"<PaperIndexing({self.source_name}, papers={self.num_papers})>"
+        return f"<PaperIndexer({self.source_name}, papers={self.num_papers})>"

@@ -4,7 +4,7 @@ from typing import Iterable, List, NamedTuple, Sequence, Tuple, Union
 
 import pandas as pd
 
-from .indexing import PaperIndexing
+from .indexing import PaperIndexer
 from .jsonformatter import generate_clean_df
 from .utils import Cord19Paths, load_dataset_paths
 
@@ -18,7 +18,7 @@ def normalize_whitespace(string: str):
 
 
 def load_papers_with_text(
-    index: PaperIndexing,
+    index: PaperIndexer,
     indices: List[int],
     keys: Iterable[str] = ("abstract", "body_text", "back_matter"),
 ):
@@ -28,8 +28,8 @@ def load_papers_with_text(
         will be used for obtaining texts: ('abstract', 'body_text',
         'back_matter')
     """
-    if not isinstance(index, PaperIndexing):
-        raise ValueError(f"{type(index)} is not an instance of PaperIndexing.")
+    if not isinstance(index, PaperIndexer):
+        raise ValueError(f"{type(index)} is not an instance of PaperIndexer.")
 
     batch = []
     papers = index.load_papers(indices)
@@ -76,7 +76,7 @@ def papers_to_csv(
     has_full_text = metadata.loc[metadata["has_full_text"] == True, ["sha"]]
     has_full_text = list(set(has_full_text["sha"].to_list()))
 
-    def with_full_text(index: PaperIndexing) -> List[int]:
+    def with_full_text(index: PaperIndexer) -> List[int]:
         # filter only paper-id's if full-text is available in the metadata
         indices = []
         for paper_id in has_full_text:
@@ -93,7 +93,7 @@ def papers_to_csv(
         sources = [d for d in sources.dirs if d.name[:3] in dirs]
 
     for path in sources:
-        index = PaperIndexing(path)
+        index = PaperIndexer(path)
         papers = index.load_papers(with_full_text(index))
         df = generate_clean_df(papers)
 
