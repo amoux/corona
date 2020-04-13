@@ -67,7 +67,7 @@ class CORD19Dataset(PaperIndexer):
                 node = 0
                 while len(queue) > 0:
                     node = queue.popleft()
-                    batch = self.texts(split)
+                    batch = self.texts([node])
                     for line in tqdm(batch, desc="lines", leave=False):
                         sentences = self.tokenize(line)
                         for token in sentences:
