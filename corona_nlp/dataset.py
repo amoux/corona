@@ -22,14 +22,14 @@ class Sentences:
         return dict([(index, []) for index in self.indices])
 
     def __len__(self):
-        return len(self.counts)
+        return self.counts
 
 
 @dataclass
 class Papers:
     sentences: Sentences = field(repr=False)
     cluster: Dict[int, List[str]] = field(repr=False)
-    avglen: float = field(init=False)
+    avg_strlen: float = field(init=False)
     num_papers: int = field(init=False)
     num_sents: int = field(init=False)
 
@@ -37,7 +37,7 @@ class Papers:
         if isinstance(self.sentences, Sentences):
             for key, val in self.sentences.__dict__.items():
                 setattr(self, key, val)
-        self.avglen = round(self.strlen / self.counts, 2)
+        self.avg_strlen = round(self.strlen / self.counts, 2)
         self.num_papers = len(self.indices)
         self.num_sents = self.counts
 
