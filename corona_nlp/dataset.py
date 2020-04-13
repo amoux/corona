@@ -1,4 +1,5 @@
 import random
+from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Iterable, List
@@ -6,7 +7,7 @@ from typing import Dict, Iterable, List
 from tqdm import tqdm
 
 from .indexing import PaperIndexer
-from .preprocessing import load_papers_with_text, normalize_whitespace
+from .preprocessing import normalize_whitespace
 from .tokenizer import SpacySentenceTokenizer
 
 
@@ -18,8 +19,7 @@ class Sentences:
     strlen: int = 0
 
     def init_cluster(self) -> Dict[int, List[str]]:
-        cluster_shape = zip(self.indices, range(len(self.indices)))
-        return dict([(index, []) for index, _ in cluster_shape])
+        return dict([(index, []) for index in self.indices])
 
     def __len__(self):
         return len(self.counts)
@@ -54,7 +54,7 @@ class Papers:
                 yield sentence
 
 
-class Cord19Dataset(PaperIndexer):
+class CORD19Dataset(PaperIndexer):
     def __init__(self, source_dir: Path, text_keys=("abstract", "body_text")):
         super().__init__(source_dir=source_dir)
         self.text_keys = text_keys
@@ -88,22 +88,35 @@ class Cord19Dataset(PaperIndexer):
                 for string in paper[key]:
                     yield string["text"]
 
-    def sents(self, indices: List[int], minlen=20, maxlen=2000) -> Papers:
+    def sents(self, indices: List[int], minlen=20, batch_size=10) -> Papers:
         """Return instance of papers with texts transformed to sentences."""
-        sentences = Sentences(indices)
-        cluster = sentences.init_cluster()
-        for i, line in tqdm(zip(indices, self.texts(indices)), desc="papers"):
-            line = normalize_whitespace(line)
-            if len(line) <= maxlen:
-                tokens = self.tokenize(line)
-                for token in tokens:
-                    string = normalize_whitespace(token.text)
-                    if len(string) >= minlen:
-                        if string not in cluster[i]:
+        rem = batch_size % 2
+        if rem:
+            batch_size - rem
+        samples = len(indices)
+        with tqdm(total=samples, desc="papers") as pbar:
+            sents_i = Sentences(indices)
+            cluster = sents_i.init_cluster()
+            for index in range(0, samples, batch_size):
+                split = indices[index: min(index + batch_size, samples)]
+                queue, node = (deque(split), 0)
+                while len(queue) > 0:
+                    node = queue.popleft()
+                    batch = self.texts(split)
+                    for line in tqdm(batch, desc="lines", leave=False):
+                        sentences = self.tokenize(line)
+                        for token in sentences:
+                            string = normalize_whitespace(token.text)
                             length = len(string)
-                            sentences.strlen += length
-                            sentences.counts += 1
-                            sentences.maxlen = max(length, sentences.maxlen)
-                            cluster[i].append(string)
+                            if length <= minlen:
+                                continue
+                            if string not in cluster[node]:
+                                sents_i.strlen += length
+                                sents_i.counts += 1
+                                sents_i.maxlen = max(length, sents_i.maxlen)
+                                cluster[node].append(string)
+                pbar.update(len(split))
+        return Papers(sents_i, cluster)
 
-        return Papers(sentences, cluster=cluster)
+    def __repr__(self):
+        return f"<CORD19Dataset({self.source_name}, papers={self.num_papers})>"
