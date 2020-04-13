@@ -1,61 +1,24 @@
+# cython: infer_types=True
+# coding: utf8
 import random
 from collections import deque
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, List
+from typing import List, Tuple, Union
 
 from tqdm.auto import tqdm
 
+from .datatypes import Papers, Sentences
 from .indexing import PaperIndexer
 from .preprocessing import normalize_whitespace
 from .tokenizer import SpacySentenceTokenizer
 
 
-@dataclass
-class Sentences:
-    indices: List[str] = field(repr=False, default=list)
-    counts: int = 0
-    maxlen: int = 0
-    strlen: int = 0
-
-    def init_cluster(self) -> Dict[int, List[str]]:
-        return dict([(index, []) for index in self.indices])
-
-    def __len__(self):
-        return self.counts
-
-
-@dataclass
-class Papers:
-    sentences: Sentences = field(repr=False)
-    cluster: Dict[int, List[str]] = field(repr=False)
-    avg_strlen: float = field(init=False)
-    num_papers: int = field(init=False)
-    num_sents: int = field(init=False)
-
-    def __post_init__(self):
-        if isinstance(self.sentences, Sentences):
-            for key, val in self.sentences.__dict__.items():
-                setattr(self, key, val)
-        self.avg_strlen = round(self.strlen / self.counts, 2)
-        self.num_papers = len(self.indices)
-        self.num_sents = self.counts
-
-    def __len__(self):
-        return self.num_papers
-
-    def __getitem__(self, index):
-        if isinstance(index, int):
-            return iter(self.cluster[index])
-
-    def __iter__(self):
-        for index in self.cluster:
-            for sentence in self.cluster[index]:
-                yield sentence
-
-
 class CORD19Dataset(PaperIndexer):
-    def __init__(self, source_dir: Path, text_keys=("abstract", "body_text")):
+    def __init__(
+            self,
+            source_dir: Union[str, Path],
+            text_keys: Tuple[str] = ("abstract", "body_text"),
+    ):
         super().__init__(source_dir=source_dir)
         self.text_keys = text_keys
         self._tokenizer = SpacySentenceTokenizer()
@@ -75,7 +38,7 @@ class CORD19Dataset(PaperIndexer):
     def tokenize(self, string: str) -> List[str]:
         return self._tokenizer.tokenize(string)
 
-    def title(self, index: int = None, paper_id: str = None) -> None:
+    def title(self, index: int = None, paper_id: str = None) -> str:
         return self.load_paper(index, paper_id)["metadata"]["title"]
 
     def titles(self, indices: List[int] = None, paper_ids: List[str] = None):
@@ -94,12 +57,14 @@ class CORD19Dataset(PaperIndexer):
         if rem:
             batch_size - rem
         samples = len(indices)
+
         with tqdm(total=samples, desc="papers") as pbar:
-            sents_i = Sentences(indices)
-            cluster = sents_i.init_cluster()
-            for index in range(0, samples, batch_size):
-                split = indices[index: min(index + batch_size, samples)]
-                queue, node = (deque(split), 0)
+            index = Sentences(indices)
+            cluster = index.init_cluster()
+            for i in range(0, samples, batch_size):
+                split = indices[i: min(i + batch_size, samples)]
+                queue = deque(split)
+                node = 0
                 while len(queue) > 0:
                     node = queue.popleft()
                     batch = self.texts(split)
@@ -111,12 +76,13 @@ class CORD19Dataset(PaperIndexer):
                             if length <= minlen:
                                 continue
                             if string not in cluster[node]:
-                                sents_i.strlen += length
-                                sents_i.counts += 1
-                                sents_i.maxlen = max(length, sents_i.maxlen)
+                                index.strlen += length
+                                index.counts += 1
+                                index.maxlen = max(length, index.maxlen)
                                 cluster[node].append(string)
+
                 pbar.update(len(split))
-        return Papers(sents_i, cluster)
+        return Papers(index, cluster=cluster)
 
     def __repr__(self):
         return f"<CORD19Dataset({self.source_name}, papers={self.num_papers})>"

@@ -1,4 +1,5 @@
 from setuptools import find_packages, setup
+from Cython.Build import cythonize
 
 PACKAGES = find_packages()
 
@@ -11,4 +12,5 @@ setup(
     author_email='carlosdeveloper2@gmail.com',
     license='MIT',
     zip_safe=False,
+    ext_modules=cythonize("corona_nlp/dataset.pyx")
 )
