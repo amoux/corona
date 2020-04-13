@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Iterable, List
 
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 from .indexing import PaperIndexer
 from .preprocessing import normalize_whitespace
