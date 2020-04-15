@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 
 @dataclass
@@ -23,6 +23,7 @@ class Papers:
     avg_strlen: float = field(init=False)
     num_papers: int = field(init=False)
     num_sents: int = field(init=False)
+    _meta: List[Tuple[int, int]] = field(init=False, repr=False)
 
     def __post_init__(self):
         if isinstance(self.sentences, Sentences):
@@ -31,13 +32,22 @@ class Papers:
         self.avg_strlen = round(self.strlen / self.counts, 2)
         self.num_papers = len(self.indices)
         self.num_sents = self.counts
+        self._meta = list(self._edges())
+
+    def _edges(self):
+        for i in self.indices:
+            for j in range(0, len(self.cluster[i])):
+                yield (i, j)
+
+    def _graph(self, index: int):
+        node, item = self._meta[index]
+        return self.cluster[node][item]
 
     def __len__(self):
-        return self.num_papers
+        return self.num_sents
 
-    def __getitem__(self, index: int):
-        if isinstance(index, int):
-            return iter(self.cluster[index])
+    def __getitem__(self, item: int):
+        return self._graph(item)
 
     def __iter__(self):
         for index in self.cluster:
