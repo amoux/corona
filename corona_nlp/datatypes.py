@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from typing import Dict, List, Tuple
+from .utils import DataIO
 
 
 @dataclass
@@ -39,15 +40,41 @@ class Papers:
             for j in range(0, len(self.cluster[i])):
                 yield (i, j)
 
-    def _graph(self, index: int):
-        node, item = self._meta[index]
-        return self.cluster[node][item]
+    def string(self, sent_id: int) -> str:
+        """Retrive a single string from a sentence ID.
+
+        * Same as `self[sent_id]`
+        """
+        return self[sent_id]
+
+    def lookup(self, sent_ids: List[int]) -> List[Dict[str, int]]:
+        locs = []
+        for i in sent_ids:
+            node, item = self._meta[i]
+            locs.append({"sent_id": i,
+                         "paper_id": node,
+                         "loc": (node, item)})
+        return locs
+
+    def sents(self, paper_id: int) -> List[str]:
+        """Retrive all sentences belonging to the given paper ID."""
+        return self.cluster[paper_id]
+
+    def to_disk(self, path: str):
+        """Save the current state to a directory."""
+        DataIO.save_data(path, self)
+
+    @staticmethod
+    def from_disk(path: str):
+        """Load the state from a directory."""
+        return DataIO.load_data(path)
 
     def __len__(self):
         return self.num_sents
 
-    def __getitem__(self, item: int):
-        return self._graph(item)
+    def __getitem__(self, item):
+        node, item = self._meta[item]
+        return self.cluster[node][item]
 
     def __iter__(self):
         for index in self.cluster:

@@ -21,11 +21,11 @@ class CORD19Dataset(PaperIndexer):
         self.text_keys = text_keys
         self._tokenizer = SpacySentenceTokenizer()
 
-    def samples(self, k: int = None) -> List[int]:
+    def sample(self, k: int = None) -> List[int]:
         """Return all or k iterable of paper-id to index mappings.
 
-        `k`: For all available papers use `k=-1`. Otherwise, pass `k=n`
-            number of samples to load from the available dataset papers.
+        `k`: A sample from all available papers use `k=-1`. Otherwise, pass
+            `k=n` number of indices to load from the available dataset files.
         """
         indices = list(self.index_paper.keys())
         if k == -1:
@@ -49,18 +49,18 @@ class CORD19Dataset(PaperIndexer):
                 for string in paper[key]:
                     yield string["text"]
 
-    def sents(self, indices: List[int], minlen=20, batch_size=10) -> Papers:
+    def build(self, indices: List[int], minlen=20, batch_size=10) -> Papers:
         """Return instance of papers with texts transformed to sentences."""
         rem = batch_size % 2
         if rem:
             batch_size - rem
-        samples = len(indices)
+        sample = len(indices)
 
-        with tqdm(total=samples, desc="papers") as pbar:
+        with tqdm(total=sample, desc="papers") as pbar:
             index = Sentences(indices)
             cluster = index.init_cluster()
-            for i in range(0, samples, batch_size):
-                split = indices[i: min(i + batch_size, samples)]
+            for i in range(0, sample, batch_size):
+                split = indices[i: min(i + batch_size, sample)]
                 queue = deque(split)
                 node = 0
                 while len(queue) > 0:
@@ -83,4 +83,4 @@ class CORD19Dataset(PaperIndexer):
         return Papers(index, cluster=cluster)
 
     def __repr__(self):
-        return f"<CORD19Dataset({self.source_name}, papers={self.num_papers})>"
+        return f"CORD19Dataset({self.source_name}, papers={self.num_papers})"
