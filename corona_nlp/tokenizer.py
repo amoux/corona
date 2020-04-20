@@ -5,9 +5,9 @@ from typing import IO, List, Sequence
 
 import spacy
 from spacy.lang.en import English
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
-from .preprocessing import normalize_whitespace
+from .utils import normalize_whitespace
 
 
 class SpacySentenceTokenizer:

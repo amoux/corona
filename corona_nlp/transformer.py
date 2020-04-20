@@ -1,29 +1,15 @@
 import json
 import logging
-import pickle
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Iterable, List
 
 import numpy as np
 import torch
 from sentence_transformers import __version__
 from sentence_transformers.util import import_from_string
-from sklearn.model_selection import train_test_split
-from tokenizers.implementations import ByteLevelBPETokenizer
-from tokenizers.processors import BertProcessing
 from torch import nn
-from torch.nn.utils.rnn import pad_sequence
-from torch.utils.data import (DataLoader, Dataset, RandomSampler,
-                              SequentialSampler)
-from tqdm import tqdm
-from transformers import (AutoModel, AutoModelForQuestionAnswering,
-                          AutoTokenizer)
-
-BERT_MODELS_UNCASED = {
-    'squad': "bert-large-uncased-whole-word-masking-finetuned-squad",
-    'scibert': "allenai/scibert_scivocab_uncased"
-}
+from tqdm.auto import tqdm
 
 
 class SentenceTransformer(nn.Sequential):
@@ -38,14 +24,13 @@ class SentenceTransformer(nn.Sequential):
 
         NOTE: This class is slightly modified from the original version with
         minor performance enhancements. Like eliminating constant calls of the
-        len function on all the sentences in a loop - the consequences of this
-        alone; are noticeable when the number of samples is > 30k thousand.
+        len function on all the sentences in a loop.
 
         Original source: https://github.com/UKPLab/sentence-transformers
 
-        model_path: path to the directory with the config and modules file.
-        modules: iterable object of nn.Module instances.
-        device: computation device to choose.
+        `model_path`: path to the directory with the config and modules file.
+        `modules`: iterable object of nn.Module instances.
+        `device`: computation device to choose.
         """
         if modules is not None:
             if not isinstance(modules, OrderedDict):
@@ -106,8 +91,8 @@ class SentenceTransformer(nn.Sequential):
                 batch_tokens.append(tokens)
 
             sentence_features = {}
-            for sentence in batch_tokens:
-                features = self.get_sentence_features(sentence, maxlen)
+            for token_ids in batch_tokens:
+                features = self.get_sentence_features(token_ids, maxlen)
                 for name in features:
                     if name not in sentence_features:
                         sentence_features[name] = []
@@ -139,116 +124,3 @@ class SentenceTransformer(nn.Sequential):
 
     def _last_module(self):
         return self._modules[next(reversed(self._modules))]
-
-
-class TextDataset(Dataset):
-
-    def __init__(
-        self,
-        file_path: str,
-        model="scibert",
-        max_length=512,
-        overwrite_cache=False,
-    ):
-        file_path = Path(file_path)
-        assert file_path.is_file()
-        self.model_type = BERT_MODELS_UNCASED[model]
-        self.samples = []
-
-        tokenizer = AutoTokenizer.from_pretrained(self.model_type)
-        block_size = (tokenizer.max_len - tokenizer.max_len_single_sentence)
-        max_length = max_length - block_size
-
-        outdir = file_path.parent
-        file = file_path.name.replace(file_path.suffix, "")
-        name = self.model_type.replace("allenai/", "")
-        cached_features = outdir.joinpath(
-            f"{name}_cached_lm_{max_length}_{file}")
-
-        if cached_features.exists() and not overwrite_cache:
-            print(f"loading features from cashed files: {cached_features}")
-            with cached_features.open("rb") as handle:
-                self.samples = pickle.load(handle)
-        else:
-            print(f"creating features from papers file at: {outdir}")
-            with file_path.open(encoding="utf-8") as file:
-                texts = file.read()
-
-            tokenized = tokenizer.tokenize(texts)
-            sequences = tokenizer.convert_tokens_to_ids(tokenized)
-            truncated_range = range(
-                0, len(sequences) - max_length + 1, max_length)
-            for i in tqdm(truncated_range, desc="sequences", unit=""):
-                inputs = sequences[i: i + max_length]
-                tokens = tokenizer.build_inputs_with_special_tokens(inputs)
-                self.samples.append(tokens)
-
-            with cached_features.open("wb") as handle:
-                pickle.dump(self.samples, handle,
-                            protocol=pickle.HIGHEST_PROTOCOL)
-                del texts
-
-    def __len__(self):
-        return len(self.samples)
-
-    def __getitem__(self, item):
-        return torch.tensor(self.samples[item], dtype=torch.long)
-
-    def load_tokenizer(self) -> AutoTokenizer:
-        return AutoTokenizer.from_pretrained(self.model_type)
-
-
-class LineByLineTextDataset(Dataset):
-
-    def __init__(
-        self,
-        file_path: str,
-        model: str = "scibert",
-        max_length: int = 512,
-        add_special_tokens: bool = True,
-        overwrite_cache=False,
-    ):
-        file_path = Path(file_path)
-        assert file_path.is_file()
-
-        self.model_type = BERT_MODELS_UNCASED[model]
-        self.samples = []
-
-        outdir = file_path.parent
-        file = file_path.name.replace(file_path.suffix, "")
-        name = self.model_type.replace("allenai/", "")
-        cached_features = outdir.joinpath(f"{model}_cashed_lm_{max_length}")
-
-        if cached_features.exists() and not overwrite_cache:
-            print(f"loading features from cashed file: {cached_features}")
-            with cached_features.open("rb") as handle:
-                self.samples = pickle.load(handle)
-        else:
-            print(f"creating features from cashed files: {outdir}")
-            tokenizer = AutoTokenizer.from_pretrained(self.model_type)
-            with file_path.open("r", encoding="utf-8") as file:
-                for line in tqdm(file, desc="tokenized-lines"):
-                    strings = line.splitlines()
-                    for string in strings:
-                        token_ids = tokenizer.encode(
-                            text=string,
-                            max_length=max_length,
-                            add_special_tokens=add_special_tokens,
-                        )
-                    self.samples.append(token_ids)
-
-            with cached_features.open("wb") as handle:
-                pickle.dump(self.samples, handle,
-                            protocol=pickle.HIGHEST_PROTOCOL)
-
-    def __len__(self):
-        return len(self.samples)
-
-    def __getitem__(self, item):
-        return torch.tensor(self.samples[item], dtype=torch.long)
-
-    def load_tokenizer(self) -> AutoTokenizer:
-        return AutoTokenizer.from_pretrained(self.model_type)
-
-    def load_model(self) -> AutoModel:
-        return AutoModel.from_pretrained(self.model_type)

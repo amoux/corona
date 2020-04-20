@@ -9,8 +9,8 @@ from tqdm.auto import tqdm
 
 from .datatypes import Papers, Sentences
 from .indexing import PaperIndexer
-from .preprocessing import normalize_whitespace
 from .tokenizer import SpacySentenceTokenizer
+from .utils import normalize_whitespace
 
 
 class CORD19Dataset(PaperIndexer):
