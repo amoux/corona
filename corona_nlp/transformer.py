@@ -73,14 +73,17 @@ class SentenceTransformer(nn.Sequential):
         self._tokenize_module = self._first_module().tokenize
         self._features_module = self._first_module().get_sentence_features
 
-    def encode(self, sentences: List[str], batch_size: int = 8, as_numpy=True):
+    def encode(self, sentences: List[str], batch_size: int = 8, with_tqdm=True):
         """Encode an iterable of string sequences to a embedding matrix."""
         self.eval()
         sorted_lengths = np.argsort([len(sent) for sent in sentences])
         n_samples = sorted_lengths.size
+        batches = range(0, n_samples, batch_size)
+        if with_tqdm:
+            batches = tqdm(batches, desc="batches")
 
         embeddings = []
-        for i in tqdm(range(0, n_samples, batch_size), desc="batches"):
+        for i in batches:
             start = i
             end = min(start + batch_size, n_samples)
             batch_tokens, maxlen = [], 0
@@ -106,7 +109,6 @@ class SentenceTransformer(nn.Sequential):
             with torch.no_grad():
                 output = self.forward(sentence_features)
                 matrix = output["sentence_embedding"]
-            if as_numpy:
                 matrix = matrix.to("cpu").numpy()
             embeddings.extend(matrix)
 

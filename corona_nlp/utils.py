@@ -1,9 +1,7 @@
 import pickle
 import re
-from collections import namedtuple
 from pathlib import Path
-from typing import (IO, Any, Dict, Iterable, List, NamedTuple, Sequence, Tuple,
-                    Union)
+from typing import IO, Any, Dict, List, NamedTuple, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -43,23 +41,6 @@ def split_dataset(dataset: List[Any],
     return train_data, test_data
 
 
-def save_train_test(texts: List[str],
-                    out_dir="data",
-                    subset=0.8,
-                    files=["train.txt", "test.txt"]) -> IO:
-    """Split an iterable of string sequences and save train and test to file"""
-    out_dir = Path(out_dir)
-    if not out_dir.exists():
-        out_dir.mkdir(parents=True)
-
-    x, y = split_dataset(texts, subset=subset)
-    for file, dataset in zip(files, [x, y]):
-        filepath = out_dir.joinpath(file)
-        with filepath.open("w") as file:
-            for line in file:
-                file.write(f"{line}\n")
-
-
 class DataIO:
     @staticmethod
     def save_data(file_path: str, data_obj: Any) -> IO:
@@ -75,20 +56,6 @@ class DataIO:
         file_path = Path(file_path)
         with file_path.open("rb") as pkl:
             return pickle.load(pkl)
-
-
-def calc_chunksize_info(workers: int, n_samples: int, factor=4):
-    """Calculate chunksize numbers."""
-    Chunkinfo = namedtuple(
-        'Chunkinfo', ['workers', 'n_samples', 'n_chunks',
-                      'chunksize', 'last_chunk'])
-    chunksize, extra = divmod(n_samples, workers * factor)
-    if extra:
-        chunksize += 1
-    n_chunks = n_samples // chunksize + (n_samples % chunksize > 0)
-    last_chunk = n_samples % chunksize or chunksize
-    return Chunkinfo(workers, n_samples,
-                     n_chunks, chunksize, last_chunk)
 
 
 def load_dataset_paths(basedir: str) -> Cord19Paths:
@@ -121,35 +88,6 @@ def load_dataset_paths(basedir: str) -> Cord19Paths:
     for p in filesdir:
         paths[p.name] = p
     return Cord19Paths(**paths)
-
-
-def load_papers_with_text(
-    index: PaperIndexer,
-    indices: List[int],
-    keys: Iterable[str] = ("abstract", "body_text", "back_matter"),
-) -> List[Dict[str, Any]]:
-    """For every paper grab its title and all the available texts.
-
-    keys: Iterable of string sequences, if None, the default keys
-        will be used for obtaining texts: ('abstract', 'body_text',
-        'back_matter')
-    """
-    if not isinstance(index, PaperIndexer):
-        raise ValueError(f"{type(index)} is not an instance of PaperIndexer.")
-
-    batch = []
-    papers = index.load_papers(indices)
-    for i, paper in zip(indices, papers):
-        title = paper["metadata"]["title"]
-        texts = []
-        for key in keys:
-            sequences = [x["text"] for x in paper[key]]
-            for string in sequences:
-                if len(string) == 0 and string in texts:
-                    continue
-                texts.append(string)
-        batch.append({"id": i, "title": title, "texts": texts})
-    return batch
 
 
 def papers_to_csv(sources: Union[str, Cord19Paths],
