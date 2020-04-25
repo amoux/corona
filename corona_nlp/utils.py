@@ -5,6 +5,7 @@ from typing import IO, Any, Dict, List, NamedTuple, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
+from spacy import displacy
 
 from .indexing import PaperIndexer
 from .jsonformatter import generate_clean_df
@@ -90,6 +91,32 @@ def load_dataset_paths(basedir: str) -> Cord19Paths:
     return Cord19Paths(**paths)
 
 
+def render(question: str, prediction: Dict[str, str], jupyter=True,
+           return_html=False, style="ent", manual=True, label='ANSWER'):
+    """Spacy displaCy visualization util for the question answering model."""
+    options = {"compact": True, "bg": "#ed7118", "color": '#000000'}
+    display_data = {}
+    start, end = 0, 0
+    match = re.search(prediction["answer"], prediction["context"])
+    if match and match.span() is not None:
+        start, end = match.span()
+
+    display_data["ents"] = [{'start': start, 'end': end, 'label': label}]
+    options['ents'] = [label]
+    options['colors'] = {label: "linear-gradient(90deg, #aa9cfc, #fc9ce7)"}
+    if len(prediction['context']) > 1:
+        display_data['text'] = prediction['context']
+
+    display_data['title'] = f'Q : {question}\n'
+    if return_html:
+        return displacy.render([display_data], style=style,
+                               jupyter=False, options=options, manual=manual)
+    else:
+        displacy.render([display_data], style=style,
+                        page=False, minify=True,
+                        jupyter=jupyter, options=options, manual=manual)
+
+
 def papers_to_csv(sources: Union[str, Cord19Paths],
                   dirs: Tuple[Sequence[str]] = ('all',),
                   out_dir='data') -> None:
@@ -145,13 +172,11 @@ def papers_to_csv(sources: Union[str, Cord19Paths],
             index.num_papers, index.source_name, filepath))
 
 
-def concat_csv_files(
-    source_dir: str,
-    file_name="covid-lg.csv",
-    out_dir="data",
-    drop_cols=["raw_authors", "raw_bibliography"],
-    return_df=False,
-):
+def concat_csv_files(source_dir: str,
+                     file_name="covid-lg.csv",
+                     out_dir="data",
+                     drop_cols=["raw_authors", "raw_bibliography"],
+                     return_df=False):
     """Concat all CSV files into one single file.
 
     return_df: If True, saving to file is ignored and the pandas
