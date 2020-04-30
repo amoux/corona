@@ -1,34 +1,29 @@
 import json
-import numpy as np
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Union
 
 
 class PaperIndexer:
-    def __init__(self, source_dir: str):
-        self.source_path: str = None
+    def __init__(self, source: Union[str, List[str]], index_start=1):
+        self.index_start = index_start
+        self._bins: List[int] = []
+        self.paths: List[Path] = []
         self.paper_index: Dict[str, int] = {}
         self.index_paper: Dict[int, str] = {}
-
-        if isinstance(source_dir, str) or isinstance(source_dir, Path):
-            source = Path(source_dir)
-            if not source.exists():
-                source = Path("/".join(source.parts[1:]))
-            if source.is_dir():
-                source_files = [file for file in source.glob("*.json")]
-                self._map_paper_ids(source_files)
-                self.source_path = source
+        if not isinstance(source, list):
+            source = [source]
+        file_paths = []
+        for path in source:
+            path = Path(path)
+            if path.is_dir():
+                files = [file for file in path.glob('*.json')]
+                file_paths.extend(files)
+                self.paths.append(path)
+                self._bins.append(len(files))
             else:
-                raise ValueError("The path to directory is not valid"
-                                 ", got {}.".format(source_dir))
-
-    def __call__(self, samples: int, shuffle=False):
-        if isinstance(samples, int):
-            k = self.num_papers if samples > self.num_papers else samples
-            samples = list(range(1, k + 1))
-        if shuffle:
-            np.random.shuffle(samples)
-        return self.load_papers(indices=samples)
+                raise ValueError(f"Path, {path} directory not found.")
+        self._map_paper_ids(file_paths)
+        self._reverse_map_ids()
 
     @property
     def num_papers(self):
@@ -36,21 +31,32 @@ class PaperIndexer:
 
     @property
     def source_name(self):
-        return self.source_path.parts[-1]
+        if len(self.paths) == 1:
+            return self.paths[0].name
+        return [p.name for p in self.paths]
 
     def _map_paper_ids(self, json_files: List[str]):
-        paper_index = {}
-        for index, file in enumerate(json_files, start=1):
+        for index, file in enumerate(json_files, self.index_start):
             paper_id = file.name.replace(".json", "")
-            if paper_id not in paper_index:
-                paper_index[paper_id] = index
+            if paper_id not in self.paper_index:
+                self.paper_index[paper_id] = index
 
-        index_paper = {idx: pid for pid, idx in paper_index.items()}
-        self.paper_index = paper_index
-        self.index_paper = index_paper
+    def _reverse_map_ids(self) -> None:
+        self.index_paper = dict([(i, p) for p, i in self.paper_index.items()])
+
+    def _index_dirpath(self, index: int) -> Path:
+        if index <= self._bins[0]:
+            return self.paths[0]
+        else:
+            size = 0
+            for i in range(len(self._bins)):
+                size += self._bins[i]
+                if index <= size:
+                    return self.paths[i]
 
     def _load_data(self, paper_id: str):
-        file_path = self.source_path.joinpath(f"{paper_id}.json")
+        path = self._index_dirpath(self.paper_index[paper_id])
+        file_path = path.joinpath(f"{paper_id}.json")
         with file_path.open("rb") as file:
             return json.load(file)
 
@@ -63,7 +69,7 @@ class PaperIndexer:
         return [idx2pid[idx] for idx in indices if idx in idx2pid]
 
     def load_paper(self, index: int = None, paper_id: str = None):
-        """Load a single paper and data by either index or paper-id."""
+        """Load a single paper and data by either index or paper ID."""
         if index is not None:
             paper = self.load_papers([index], None)
         elif paper_id is not None:
@@ -71,10 +77,7 @@ class PaperIndexer:
         return paper[0]
 
     def load_papers(self, indices: List[int] = None, paper_ids: List[str] = None):
-        """Load many papers and data by either indices or paper-ids.
-
-        NOTE: Sequences of items can loaded in any order.
-        """
+        """Load many papers and data by either indices or paper ID's."""
         if indices is not None:
             if isinstance(indices, list) and isinstance(indices[0], int):
                 paper_ids = self._decode(indices)
@@ -86,7 +89,7 @@ class PaperIndexer:
             if isinstance(paper_ids, list) and isinstance(paper_ids[0], str):
                 return [self._load_data(pid) for pid in paper_ids]
             else:
-                raise ValueError("Paper ID not of type List[str].")
+                raise ValueError("Paper ID's not of type List[str].")
 
     def __getitem__(self, item):
         if isinstance(item, int):
@@ -98,4 +101,5 @@ class PaperIndexer:
         return self.num_papers
 
     def __repr__(self):
-        return f"<PaperIndexer({self.source_name}, papers={self.num_papers})>"
+        return "PaperIndexer(papers={}, source={})".format(
+            self.num_papers, self.source_name)

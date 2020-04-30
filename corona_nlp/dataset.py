@@ -1,6 +1,5 @@
 import random
 from collections import deque
-from pathlib import Path
 from typing import List, Tuple, Union
 
 from tqdm.auto import tqdm
@@ -14,10 +13,11 @@ from .utils import normalize_whitespace
 class CORD19Dataset(PaperIndexer):
     def __init__(
             self,
-            source_dir: Union[str, Path],
+            source: Union[str, List[str]],
             text_keys: Tuple[str] = ("abstract", "body_text"),
+            index_start=1,
     ):
-        super().__init__(source_dir=source_dir)
+        super().__init__(source, index_start)
         self.text_keys = text_keys
         self.sentence_tokenizer = SpacySentenceTokenizer()
 
@@ -80,4 +80,5 @@ class CORD19Dataset(PaperIndexer):
         return Papers(index, cluster=cluster)
 
     def __repr__(self):
-        return f"CORD19Dataset({self.source_name}, papers={self.num_papers})"
+        return "CORD19Dataset(papers={}, source={})".format(
+            self.num_papers, self.source_name)
