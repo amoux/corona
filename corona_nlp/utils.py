@@ -26,6 +26,30 @@ def normalize_whitespace(string: str) -> str:
     return nonebreaking_space.sub(" ", linebreak.sub(r"\n", string)).strip()
 
 
+def clean_tokenization(sequence: str) -> str:
+    """Clean up spaces before punctuations and abbreviated forms."""
+    return (
+        sequence.replace(" .", ".")
+        .replace(" ?", "?")
+        .replace(" !", "!")
+        .replace(" ,", ",")
+        .replace(" ' ", "'")
+        .replace(" n't", "n't")
+        .replace(" 'm", "'m")
+        .replace(" do not", " don't")
+        .replace(" 's", "'s")
+        .replace(" 've", "'ve")
+        .replace(" 're", "'re")
+        .replace(" / ", "/")
+        .replace(" )", ")")
+        .replace("( ", "(")
+        .replace("[ ", "[")
+        .replace(" ]", "]")
+        .replace(" ;", ";")
+        .replace(" - ", "-")
+    )
+
+
 def split_dataset(dataset: List[Any],
                   subset: float = 0.8,
                   samples: int = None,

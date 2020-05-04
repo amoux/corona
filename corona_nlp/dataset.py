@@ -7,7 +7,7 @@ from tqdm.auto import tqdm
 from .datatypes import Papers, Sentences
 from .indexing import PaperIndexer
 from .tokenizer import SpacySentenceTokenizer
-from .utils import normalize_whitespace
+from .utils import clean_tokenization, normalize_whitespace
 
 
 class CORD19Dataset(PaperIndexer):
@@ -67,6 +67,7 @@ class CORD19Dataset(PaperIndexer):
                         sentences = self.sentence_tokenizer.tokenize(line)
                         for token in sentences:
                             string = normalize_whitespace(token.text)
+                            string = clean_tokenization(string)
                             length = len(string)
                             if length <= minlen:
                                 continue
