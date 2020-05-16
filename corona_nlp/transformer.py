@@ -13,6 +13,8 @@ from tqdm.auto import tqdm
 
 
 class SentenceTransformer(nn.Sequential):
+    input_attrs = ('input_ids', 'token_type_ids',
+                   'input_mask', 'sentence_lengths')
 
     def __init__(
         self,
@@ -22,15 +24,12 @@ class SentenceTransformer(nn.Sequential):
     ):
         """Sentence Transformer Class.
 
-        NOTE: This class is slightly modified from the original version with
-        minor performance enhancements. Like eliminating constant calls of the
-        len function on all the sentences in a loop.
-
+        This class is slightly modified from the original version.
         Original source: https://github.com/UKPLab/sentence-transformers
 
-        `model_path`: path to the directory with the config and modules file.
-        `modules`: iterable object of nn.Module instances.
-        `device`: computation device to choose.
+        `model_path`: Path to the directory with the config and modules file.
+        `modules`: Iterable object of `nn.Module` instances.
+        `device`: Computation device to choose.
         """
         if modules is not None:
             if not isinstance(modules, OrderedDict):
@@ -73,52 +72,46 @@ class SentenceTransformer(nn.Sequential):
         self._tokenize_module = self._first_module().tokenize
         self._features_module = self._first_module().get_sentence_features
 
-    def encode(self, sentences: List[str], batch_size: int = 8, with_tqdm=True):
+    def encode(self, sentences: List[str], batch_size=8, with_tqdm=True):
         """Encode an iterable of string sequences to a embedding matrix."""
         self.eval()
-        sorted_lengths = np.argsort([len(sent) for sent in sentences])
-        n_samples = sorted_lengths.size
-        batches = range(0, n_samples, batch_size)
+        lengths = np.argsort([len(sent) for sent in sentences])
+        maxsize = lengths.size
+        batch = range(0, maxsize, batch_size)
         if with_tqdm:
-            batches = tqdm(batches, desc="batches")
+            batch = tqdm(batch, desc="batch")
 
-        embeddings = []
-        for i in batches:
-            start = i
-            end = min(start + batch_size, n_samples)
-            batch_tokens, maxlen = [], 0
-            for j in sorted_lengths[start:end]:
-                string = sentences[j]
-                tokens = self.tokenize(string)
-                maxlen = max(maxlen, len(tokens))
-                batch_tokens.append(tokens)
+        embedding = []
+        for i in batch:
+            maxlen = 0
+            tokens = []
+            for j in lengths[i: min(i + batch_size, maxsize)]:
+                ids = self.tokenize(sentences[j])
+                maxlen = max(maxlen, len(ids))
+                tokens.append(ids)
 
-            sentence_features = {}
-            for token_ids in batch_tokens:
-                features = self.get_sentence_features(token_ids, maxlen)
-                for name in features:
-                    if name not in sentence_features:
-                        sentence_features[name] = []
-                    sentence_features[name].append(features[name])
+            attrs = dict([(x, []) for x in self.input_attrs])
+            for ids in tokens:
+                inputs = self.sentence_features(ids, maxlen)
+                for input in inputs:
+                    tensor = torch.tensor(inputs[input].tolist())
+                    attrs[input].append(tensor.unsqueeze(0))
 
-            for feature in sentence_features:
-                features = np.asarray(sentence_features[feature])
-                sentence_features[feature] = torch.tensor(
-                    features).to(self.device)
+            for input in self.input_attrs[:3]:
+                attrs[input] = torch.cat(attrs[input]).to(self.device)
 
             with torch.no_grad():
-                output = self.forward(sentence_features)
-                matrix = output["sentence_embedding"]
-                matrix = matrix.to("cpu").numpy()
-            embeddings.extend(matrix)
+                output = self.forward(attrs)
+                embedd = output["sentence_embedding"]
+                embedding.extend(embedd.to("cpu").numpy())
 
-        embeddings = [embeddings[i] for i in np.argsort(sorted_lengths)]
-        return np.array(embeddings)
+        embedding = [embedding[i] for i in np.argsort(lengths)]
+        return np.array(embedding)
 
     def tokenize(self, string: str):
         return self._tokenize_module(string)
 
-    def get_sentence_features(self, *features):
+    def sentence_features(self, *features):
         return self._features_module(*features)
 
     def _first_module(self):
