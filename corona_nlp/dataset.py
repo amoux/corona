@@ -40,42 +40,44 @@ class CORD19Dataset(PaperIndexer):
         for paper in self.load_papers(indices, paper_ids):
             yield paper["metadata"]["title"]
 
-    def texts(self, indices: List[int] = None, paper_ids: List[str] = None):
+    def docs(self, indices=None, paper_ids=None, affix="\n"):
+        for paper in self.load_papers(indices, paper_ids):
+            doc = []
+            for key in self.text_keys:
+                for line in paper[key]:
+                    doc.append(line["text"])
+            yield affix.join(doc)
+
+    def lines(self, indices: List[int] = None, paper_ids: List[str] = None):
         for paper in self.load_papers(indices, paper_ids):
             for key in self.text_keys:
-                for string in paper[key]:
-                    yield string["text"]
+                for line in paper[key]:
+                    yield line["text"]
 
     def build(self, indices: List[int], minlen=20, batch_size=10) -> Papers:
         """Return instance of papers with texts transformed to sentences."""
-        rem = batch_size % 2
-        if rem:
-            batch_size - rem
         sample = len(indices)
-
         with tqdm(total=sample, desc="papers") as pbar:
             index = Sentences(indices)
             cluster = index.init_cluster()
             for i in range(0, sample, batch_size):
                 split = indices[i: min(i + batch_size, sample)]
-                queue = deque(split)
+                queue, docs = deque(split), self.docs(split)
                 node = 0
                 while len(queue) > 0:
                     node = queue.popleft()
-                    batch = self.texts([node])
-                    for line in tqdm(batch, desc="lines", leave=False):
-                        sentences = self.sentence_tokenizer.tokenize(line)
-                        for token in sentences:
-                            string = normalize_whitespace(token.text)
-                            string = clean_tokenization(string)
-                            length = len(string)
-                            if length <= minlen:
-                                continue
-                            if string not in cluster[node]:
-                                index.strlen += length
-                                index.counts += 1
-                                index.maxlen = max(length, index.maxlen)
-                                cluster[node].append(string)
+                    doc = next(docs)
+                    for sent in self.sentence_tokenizer.tokenize(doc):
+                        string = normalize_whitespace(sent.text)
+                        string = clean_tokenization(string)
+                        length = len(string)
+                        if length <= minlen:
+                            continue
+                        if string not in cluster[node]:
+                            index.strlen += length
+                            index.counts += 1
+                            index.maxlen = max(length, index.maxlen)
+                            cluster[node].append(string)
 
                 pbar.update(len(split))
         return Papers(index, cluster=cluster)
