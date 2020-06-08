@@ -23,12 +23,13 @@ class CORD19Dataset(PaperIndexer):
         self.text_keys = text_keys
         self.sentence_tokenizer = SpacySentenceTokenizer()
 
-    def sample(self, k: int = None) -> List[int]:
+    def sample(self, k: int = None, seed: int = None) -> List[int]:
         """Return all or k iterable of paper-id to index mappings.
 
         `k`: A sample from all available papers use `k=-1`. Otherwise, pass
             `k=n` number of indices to load from the available dataset files.
         """
+        random.seed(seed)
         indices = list(self.index_paper.keys())
         if k == -1:
             return indices
@@ -68,8 +69,7 @@ class CORD19Dataset(PaperIndexer):
                 node = 0
                 while len(queue) > 0:
                     node = queue.popleft()
-                    doc = next(docs)
-                    for sent in self.sentence_tokenizer.tokenize(doc):
+                    for sent in self.sentence_tokenizer.tokenize(next(docs)):
                         string = normalize_whitespace(sent.text)
                         string = clean_tokenization(string)
                         length = len(string)

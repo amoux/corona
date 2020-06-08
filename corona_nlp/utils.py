@@ -1,15 +1,18 @@
 import pickle
 import re
 from pathlib import Path
+from string import punctuation
 from typing import IO, Any, Dict, List, NamedTuple, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
+from nltk.tokenize import word_tokenize
 from spacy import displacy
 
 from .indexing import PaperIndexer
 from .jsonformatter import generate_clean_df
 
+# NOTE: This needs to be removed.
 Cord19Paths = NamedTuple(
     'Cord19Paths', [
         ('readme', Path), ('metadata', Path), ('dirs', List[Path]),
@@ -17,6 +20,13 @@ Cord19Paths = NamedTuple(
         ('biorxiv_medrxiv', Path),
         ('comm_use_subset', Path),
         ('noncomm_use_subset', Path), ])
+
+
+def clean_punctuation(text: str) -> str:
+    punct = re.compile("[{}]".format(re.escape(punctuation)))
+    tokens = word_tokenize(text)
+    text = " ".join(filter(lambda t: punct.sub("", t), tokens))
+    return normalize_whitespace(text)
 
 
 def normalize_whitespace(string: str) -> str:
