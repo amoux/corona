@@ -1,6 +1,6 @@
 import random
 from collections import deque
-from typing import List, Tuple, Union
+from typing import Callable, List, Tuple, Union
 
 from tqdm.auto import tqdm
 
@@ -15,11 +15,21 @@ class CORD19Dataset(PaperIndexer):
             self,
             source: Union[str, List[str]],
             text_keys: Tuple[str] = ("abstract", "body_text"),
-            index_start=1,
+            index_start: int = 1,
+            nlp_model: str = "en_core_web_sm",
+            sentence_tokenizer: Callable = None,
     ):
         super().__init__(source, index_start)
         self.text_keys = text_keys
-        self.sentence_tokenizer = SpacySentenceTokenizer()
+        self.sentence_tokenizer = sentence_tokenizer
+        if sentence_tokenizer is not None:
+            if not hasattr(sentence_tokenizer, 'tokenize'):
+                raise AttributeError(
+                    f'Callable[{sentence_tokenizer.__name__}] '
+                    ' object missing self.tokenize() attribute.'
+                )
+        else:
+            self.sentence_tokenizer = SpacySentenceTokenizer(nlp_model)
 
     def sample(self, k: int = None, seed: int = None) -> List[int]:
         """Return all or k iterable of paper-id to index mappings.
