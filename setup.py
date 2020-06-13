@@ -1,16 +1,12 @@
 from setuptools import find_packages, setup
-from Cython.Build import cythonize
-
-PACKAGES = find_packages()
 
 setup(
     name='corona_nlp',
-    packages=PACKAGES,
+    packages=find_packages(),
     version='0.0.2',
     url='https://github.com/amoux/corona_nlp',
     author='Carlos A. Segura Diaz De Leon',
     author_email='carlosdeveloper2@gmail.com',
+    python_requires='>=3.6',
     license='MIT',
-    zip_safe=False,
-    ext_modules=cythonize("corona_nlp/dataset.pyx")
 )

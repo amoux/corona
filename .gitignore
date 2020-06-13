@@ -3,15 +3,14 @@ data/*
 *notebooks/*.ipynb_checkpoints
 *.vscode
 .src/covid-papers-browser
+models
+vocab
+qaam-mypy_cache
+scripts/*.py
 notebooks/*Untitled*
 notebooks/sents-md.txt
 notebooks/covid-vocab
 notebooks/data*
-models
-vocab
-qaam-mypy_cache
-scripts/encoding.py
-scripts/finetune.py
 notebooks/qaam-cache/data/data_obj
 notebooks/pytorch-dataset-batching (todo).ipynb
 notebooks/faiss-trained-indices/embeddings.index
