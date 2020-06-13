@@ -6,7 +6,7 @@ data/*
 models
 vocab
 qaam-mypy_cache
-scripts/*.py
+scripts/*
 notebooks/*Untitled*
 notebooks/sents-md.txt
 notebooks/covid-vocab

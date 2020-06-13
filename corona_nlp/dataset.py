@@ -2,7 +2,7 @@ import concurrent.futures
 import random
 from collections import deque
 from multiprocessing import cpu_count
-from typing import Callable, List, Tuple, Union
+from typing import Callable, Iterator, List, Tuple, Union
 
 from tqdm.auto import tqdm
 
@@ -21,94 +21,7 @@ class CORD19Dataset(PaperIndexer):
             nlp_model: str = "en_core_web_sm",
             sentence_tokenizer: Callable = None,
     ):
-        super().__init__(source, index_start)
-        self.text_keys = text_keys
-        self.sentence_tokenizer = sentence_tokenizer
-        if sentence_tokenizer is not None:
-            if not hasattr(sentence_tokenizer, 'tokenize'):
-                raise AttributeError(
-                    f'Callable[{sentence_tokenizer.__name__}] '
-                    ' object missing self.tokenize() attribute.'
-                )
-        else:
-            self.sentence_tokenizer = SpacySentenceTokenizer(nlp_model)
-
-    def sample(self, k: int = None, seed: int = None) -> List[int]:
-        """Return all or k iterable of paper-id to index mappings.
-
-        `k`: A sample from all available papers use `k=-1`. Otherwise, pass
-            `k=n` number of indices to load from the available dataset files.
-        """
-        random.seed(seed)
-        indices = list(self.index_paper.keys())
-        if k == -1:
-            return indices
-        assert k <= self.num_papers
-        return random.sample(indices, k=k)
-
-    def title(self, index: int = None, paper_id: str = None) -> str:
-        return self.load_paper(index, paper_id)["metadata"]["title"]
-
-    def titles(self, indices: List[int] = None, paper_ids: List[str] = None):
-        for paper in self.load_papers(indices, paper_ids):
-            yield paper["metadata"]["title"]
-
-    def docs(self, indices=None, paper_ids=None, affix="\n"):
-        for paper in self.load_papers(indices, paper_ids):
-            doc = []
-            for key in self.text_keys:
-                for line in paper[key]:
-                    doc.append(line["text"])
-            yield affix.join(doc)
-
-    def lines(self, indices: List[int] = None, paper_ids: List[str] = None):
-        for paper in self.load_papers(indices, paper_ids):
-            for key in self.text_keys:
-                for line in paper[key]:
-                    yield line["text"]
-
-    def build(self, indices: List[int], minlen=20, batch_size=10) -> Papers:
-        """Return instance of papers with texts transformed to sentences."""
-        sample = len(indices)
-        with tqdm(total=sample, desc="papers") as pbar:
-            index = Sentences(indices)
-            cluster = index.init_cluster()
-            for i in range(0, sample, batch_size):
-                split = indices[i: min(i + batch_size, sample)]
-                queue, docs = deque(split), self.docs(split)
-                node = 0
-                while len(queue) > 0:
-                    node = queue.popleft()
-                    for sent in self.sentence_tokenizer.tokenize(next(docs)):
-                        string = normalize_whitespace(sent.text)
-                        string = clean_tokenization(string)
-                        length = len(string)
-                        if length <= minlen:
-                            continue
-                        if string not in cluster[node]:
-                            index.strlen += length
-                            index.counts += 1
-                            index.maxlen = max(length, index.maxlen)
-                            cluster[node].append(string)
-
-                pbar.update(len(split))
-        return Papers(index, cluster=cluster)
-
-    def __repr__(self):
-        return "CORD19Dataset(papers={}, source={})".format(
-            self.num_papers, self.source_name)
-
-
-class MultiCORD19Dataset(PaperIndexer):
-    def __init__(
-            self,
-            source: Union[str, List[str]],
-            text_keys: Tuple[str] = ("abstract", "body_text",),
-            index_start: int = 1,
-            nlp_model: str = "en_core_web_sm",
-            sentence_tokenizer: Callable = None,
-    ):
-        super(MultiCORD19Dataset, self).__init__(source, index_start)
+        super(CORD19Dataset, self).__init__(source, index_start)
         self.text_keys = text_keys
         self.sentence_tokenizer = sentence_tokenizer
         if sentence_tokenizer is not None:
@@ -135,11 +48,13 @@ class MultiCORD19Dataset(PaperIndexer):
     def title(self, index: int = None, paper_id: str = None) -> str:
         return self.load_paper(index, paper_id)["metadata"]["title"]
 
-    def titles(self, indices: List[int] = None, paper_ids: List[str] = None):
+    def titles(self, indices: List[int] = None,
+               paper_ids: List[str] = None) -> Iterator:
         for paper in self.load_papers(indices, paper_ids):
             yield paper["metadata"]["title"]
 
-    def docs(self, indices: List[int], paper_ids: List[str], suffix="\n"):
+    def docs(self, indices: List[int] = None,
+             paper_ids: List[str] = None, suffix="\n") -> Iterator:
         for paper in self.load_papers(indices, paper_ids):
             doc = []
             for key in self.text_keys:
@@ -147,13 +62,14 @@ class MultiCORD19Dataset(PaperIndexer):
                     doc.append(line["text"])
             yield suffix.join(doc)
 
-    def lines(self, indices: List[int] = None, paper_ids: List[str] = None):
+    def lines(self, indices: List[int] = None,
+              paper_ids: List[str] = None) -> Iterator:
         for paper in self.load_papers(indices, paper_ids):
             for key in self.text_keys:
                 for line in paper[key]:
                     yield line["text"]
 
-    def sents(self, indices: List[int], minlen=20) -> Papers:
+    def build(self, indices: List[int], minlen: int = 20) -> Papers:
         """Return an instance of papers with texts transformed to sentences."""
         if not isinstance(indices, list):
             indices = [indices]
@@ -179,7 +95,7 @@ class MultiCORD19Dataset(PaperIndexer):
 
     def batch(self, indices: List[int], minlen=20, workers=None) -> Papers:
         maxsize = len(indices)
-        workers = cpu_count() * 5 if workers is None else workers
+        workers = cpu_count() if workers is None else workers
 
         jobs = []
         for i in range(0, maxsize, workers):
@@ -187,12 +103,12 @@ class MultiCORD19Dataset(PaperIndexer):
             jobs.append(tasks)
 
         with tqdm(total=maxsize, desc="papers") as pbar:
-            batch: List[Papers] = []
+            batch_: List[Papers] = []
             with concurrent.futures.ThreadPoolExecutor(workers) as pool:
                 future_to_ids = {
-                    pool.submit(self.sents, job, minlen): job for job in jobs
+                    pool.submit(self.build, job, minlen): job for job in jobs
                 }
-                for future in concurrent.future.as_completed(future_to_ids):
+                for future in concurrent.futures.as_completed(future_to_ids):
                     ids = future_to_ids[future]
                     try:
                         papers = future.result()
@@ -200,12 +116,12 @@ class MultiCORD19Dataset(PaperIndexer):
                         print(f"{ids} generated an exception: {e}")
                         raise
                     else:
-                        batch.append(papers)
+                        batch_.append(papers)
                         pbar.update(len(ids))
 
         index = Sentences(indices)
         cluster = index.init_cluster()
-        for paper in batch:
+        for paper in batch_:
             index.strlen += paper.strlen
             index.counts += paper.counts
             index.maxlen = max(index.maxlen, paper.maxlen)
@@ -214,5 +130,5 @@ class MultiCORD19Dataset(PaperIndexer):
         return Papers(index, cluster=cluster)
 
     def __repr__(self):
-        return "MultiCORD19Dataset(papers={}, source={})".format(
+        return "CORD19Dataset(papers={}, source={})".format(
             self.num_papers, self.source_name)
