@@ -196,7 +196,7 @@ class MultiCORD19Dataset(PaperIndexer):
                     ids = future_to_ids[future]
                     try:
                         papers = future.result()
-                    except Exception:
+                    except Exception as e:
                         print(f"{ids} generated an exception: {e}")
                         raise
                     else:
