@@ -81,3 +81,20 @@ class Papers:
         for index in self.cluster:
             for sentence in self.cluster[index]:
                 yield sentence
+
+
+def merge_papers(papers: List[Papers]) -> Papers:
+    """Merge a list of instances of Papers into one."""
+    if isinstance(papers, list):
+        if not isinstance(papers[0], Papers):
+            raise TypeError("Expected a List[Papers], but found "
+                            f"a List[{type(papers[0])}] instead.")
+    i = Sentences()
+    c = i.init_cluster()
+    for p in papers:
+        i.strlen += p.strlen
+        i.counts += p.counts
+        i.maxlen = max(i.maxlen, p.maxlen)
+        i.indices.extend(p.indices)
+        c.update(p.cluster)
+    return Papers(i, c)
