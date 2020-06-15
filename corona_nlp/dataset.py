@@ -6,7 +6,7 @@ from typing import Callable, Iterator, List, Tuple, Union
 
 from tqdm.auto import tqdm
 
-from .datatypes import Papers, Sentences
+from .datatypes import Papers, Sentences, merge_papers
 from .indexing import PaperIndexer
 from .tokenizer import SpacySentenceTokenizer
 from .utils import clean_tokenization, normalize_whitespace
@@ -18,17 +18,17 @@ class CORD19Dataset(PaperIndexer):
             source: Union[str, List[str]],
             text_keys: Tuple[str] = ("abstract", "body_text",),
             index_start: int = 1,
+            sort_first: bool = False,
             nlp_model: str = "en_core_web_sm",
             sentence_tokenizer: Callable = None,
     ):
-        super(CORD19Dataset, self).__init__(source, index_start)
+        super(CORD19Dataset, self).__init__(source, index_start, sort_first)
         self.text_keys = text_keys
         self.sentence_tokenizer = sentence_tokenizer
         if sentence_tokenizer is not None:
             if not hasattr(sentence_tokenizer, 'tokenize'):
-                raise AttributeError(
-                    f'Callable[{sentence_tokenizer.__name__}] '
-                    ' object missing self.tokenize() attribute.')
+                raise AttributeError(f'Callable[{sentence_tokenizer.__name__}]'
+                                     ' missing ``self.tokenize()`` attribute.')
         else:
             self.sentence_tokenizer = SpacySentenceTokenizer(nlp_model)
 
@@ -71,9 +71,6 @@ class CORD19Dataset(PaperIndexer):
 
     def build(self, indices: List[int], minlen: int = 20) -> Papers:
         """Return an instance of papers with texts transformed to sentences."""
-        if not isinstance(indices, list):
-            indices = [indices]
-
         index = Sentences(indices)
         cluster = index.init_cluster()
         docs = self.docs(indices)
@@ -119,16 +116,8 @@ class CORD19Dataset(PaperIndexer):
                         batch_.append(papers)
                         pbar.update(len(ids))
 
-        index = Sentences(indices)
-        cluster = index.init_cluster()
-        for paper in batch_:
-            index.strlen += paper.strlen
-            index.counts += paper.counts
-            index.maxlen = max(index.maxlen, paper.maxlen)
-            cluster.update(paper.cluster)
-
-        return Papers(index, cluster=cluster)
+        return merge_papers(batch_)
 
     def __repr__(self):
-        return "CORD19Dataset(papers={}, source={})".format(
-            self.num_papers, self.source_name)
+        return "CORD19Dataset(papers={}, files_sorted={}, source={})".format(
+            self.num_papers, self.is_files_sorted, self.source_name)

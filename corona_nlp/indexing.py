@@ -4,8 +4,11 @@ from typing import Dict, List, Union
 
 
 class PaperIndexer:
-    def __init__(self, source: Union[str, List[str]], index_start=1):
+    def __init__(self, source: Union[str, List[str]],
+                 index_start=1, sort_first=False, extension=".json"):
         self.index_start = index_start
+        self.extension = extension
+        self.is_files_sorted = sort_first
         self._bins: List[int] = []
         self.paths: List[Path] = []
         self.paper_index: Dict[str, int] = {}
@@ -16,7 +19,9 @@ class PaperIndexer:
         for path in source:
             path = Path(path)
             if path.is_dir():
-                files = [file for file in path.glob('*.json')]
+                files = [file for file in path.glob(f"*{extension}")]
+                if sort_first:
+                    files.sort()
                 file_paths.extend(files)
                 self.paths.append(path)
                 self._bins.append(len(files))
@@ -35,9 +40,9 @@ class PaperIndexer:
             return self.paths[0].name
         return [p.name for p in self.paths]
 
-    def _map_paper_ids(self, json_files: List[str]):
+    def _map_paper_ids(self, json_files: List[str]) -> None:
         for index, file in enumerate(json_files, self.index_start):
-            paper_id = file.name.replace(".json", "")
+            paper_id = file.name.replace(self.extension, "")
             if paper_id not in self.paper_index:
                 self.paper_index[paper_id] = index
 
@@ -56,7 +61,7 @@ class PaperIndexer:
 
     def _load_data(self, paper_id: str):
         path = self._index_dirpath(self.paper_index[paper_id])
-        file_path = path.joinpath(f"{paper_id}.json")
+        file_path = path.joinpath(f"{paper_id}{self.extension}")
         with file_path.open("rb") as file:
             return json.load(file)
 
@@ -101,5 +106,5 @@ class PaperIndexer:
         return self.num_papers
 
     def __repr__(self):
-        return "PaperIndexer(papers={}, source={})".format(
-            self.num_papers, self.source_name)
+        return "PaperIndexer(papers={}, files_sorted={}, source={})".format(
+            self.num_papers, self.is_files_sorted, self.source_name)
