@@ -27,8 +27,7 @@ class PaperIndexer:
                 self._bins.append(len(files))
             else:
                 raise ValueError(f"Path, {path} directory not found.")
-        self._map_paper_ids(file_paths)
-        self._reverse_map_ids()
+        self._map_files_to_ids(file_paths)
 
     @property
     def num_papers(self):
@@ -40,14 +39,12 @@ class PaperIndexer:
             return self.paths[0].name
         return [p.name for p in self.paths]
 
-    def _map_paper_ids(self, json_files: List[str]) -> None:
+    def _map_files_to_ids(self, json_files: List[str]) -> None:
         for index, file in enumerate(json_files, self.index_start):
             paper_id = file.name.replace(self.extension, "")
             if paper_id not in self.paper_index:
                 self.paper_index[paper_id] = index
-
-    def _reverse_map_ids(self) -> None:
-        self.index_paper = dict([(i, p) for p, i in self.paper_index.items()])
+                self.index_paper[index] = paper_id
 
     def _index_dirpath(self, index: int) -> Path:
         if index <= self._bins[0]:
