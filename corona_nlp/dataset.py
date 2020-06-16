@@ -1,6 +1,5 @@
 import concurrent.futures
 import random
-from collections import deque
 from multiprocessing import cpu_count
 from typing import Callable, Iterator, List, Tuple, Union
 

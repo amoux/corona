@@ -2,19 +2,18 @@ import json
 import logging
 from collections import OrderedDict
 from pathlib import Path
-from typing import Iterable, List
+from typing import Dict, Iterable, List, Union
 
 import numpy as np
 import torch
 from sentence_transformers import __version__
 from sentence_transformers.util import import_from_string
-from torch import nn
+from torch import Tensor, nn
 from tqdm.auto import tqdm
 
 
 class SentenceTransformer(nn.Sequential):
-    input_attrs = ('input_ids', 'token_type_ids',
-                   'input_mask', 'sentence_lengths')
+    input_attrs = ["input_ids", "token_type_ids", "attention_mask"]
 
     def __init__(
         self,
@@ -72,47 +71,118 @@ class SentenceTransformer(nn.Sequential):
         self._tokenize_module = self._first_module().tokenize
         self._features_module = self._first_module().get_sentence_features
 
-    def encode(self, sentences: List[str], batch_size=8, with_tqdm=True):
+    def encode(self, sentences: List[str],
+               batch_size: int = 8, show_progress: bool = True) -> np.array:
         """Encode an iterable of string sequences to a embedding matrix."""
         self.eval()
+
         lengths = np.argsort([len(sent) for sent in sentences])
         maxsize = lengths.size
         batch = range(0, maxsize, batch_size)
-        if with_tqdm:
+        if show_progress:
             batch = tqdm(batch, desc="batch")
 
-        embedding = []
+        embeddings = []
         for i in batch:
             maxlen = 0
             tokens = []
             for j in lengths[i: min(i + batch_size, maxsize)]:
-                ids = self.tokenize(sentences[j])
+                ids = self.string_to_token_ids(sentences[j])
                 maxlen = max(maxlen, len(ids))
                 tokens.append(ids)
 
-            attrs = dict([(x, []) for x in self.input_attrs])
+            inputs = dict([(key, []) for key in self.input_attrs])
             for ids in tokens:
-                inputs = self.sentence_features(ids, maxlen)
-                for input in inputs:
-                    tensor = torch.tensor(inputs[input].tolist())
-                    attrs[input].append(tensor.unsqueeze(0))
+                features = self.encode_features(ids, max_seqlen=maxlen)
+                for input in features:
+                    inputs[input].append(features[input])
 
-            for input in self.input_attrs[:3]:
-                attrs[input] = torch.cat(attrs[input]).to(self.device)
+            for input in inputs:
+                inputs[input] = torch.cat(inputs[input]).to(self.device)
 
             with torch.no_grad():
-                output = self.forward(attrs)
-                embedd = output["sentence_embedding"]
-                embedding.extend(embedd.to("cpu").numpy())
+                output = self.forward(inputs)
+                embedding = output["sentence_embedding"]
+                embeddings.extend(embedding.to("cpu").numpy())
 
-        embedding = [embedding[i] for i in np.argsort(lengths)]
-        return np.array(embedding)
+        embeddings = [embeddings[i] for i in np.argsort(lengths)]
+        return np.array(embeddings)
 
-    def tokenize(self, string: str):
+    def string_to_token_ids(self, string: str) -> List[int]:
+        """Encode a string sequence into a sequence of token ids."""
         return self._tokenize_module(string)
 
-    def sentence_features(self, *features):
-        return self._features_module(*features)
+    def encode_features(self, token_ids: List[int],
+                        max_seqlen: int) -> Dict[str, Tensor]:
+        """Encode a sequence of token ids to sentence features.
+
+        :param token_ids: List[int], sequence of token ids.
+        :param max_seqlen: int, maximum size of a single or all sequence(s)
+            of token ids.
+        """
+        return self._features_module(token_ids, max_seqlen)
+
+    def encode_features_plus(self,
+                             token_ids: Union[List[int], List[List[int]]],
+                             max_seqlen: int = None) -> Dict[str, Tensor]:
+        """"Encode sequence(s) of ids to sentence features before model.
+
+        :param token_ids: List[int] | List[List[int]], sequence(s) of ids.
+        :param max_seqlen: Optional[int], maximum size of a single or all
+            sequences, if None; max_seqlen is computed automatically.
+
+        Returns Dict[str, Tensor], with tensors added to ``self.device``.
+        """
+        if isinstance(token_ids[0], list):
+            if max_seqlen is None:
+                max_seqlen = len(max(token_ids, key=len))
+        elif isinstance(token_ids[0], int):
+            if max_seqlen is None:
+                max_seqlen = len(token_ids)
+            token_ids = [token_ids]
+        else:
+            raise TypeError(
+                "Expected sequence(s) of ids, List[int] or List[List[int]]")
+
+        inputs = dict([(key, []) for key in self.input_attrs])
+        for ids in token_ids:
+            features = self.encode_features(ids, max_seqlen)
+            for input in features:
+                inputs[input].append(features[input])
+
+        for input in inputs:
+            features = torch.cat(inputs[input])
+            inputs[input] = features.to(self.device)
+
+        return inputs
+
+    def embed(self, inputs: Dict[str, Tensor], codes: str = "sentence",
+              astype: str = "torch") -> Union[Tensor, np.array]:
+        """Transform inputs to embeddings.
+
+        :param inputs: Dict[str, Tensor], inputs with tensors set to device.
+        :param codes: ``sentence`` for sentence embedding | ``token`` for
+            token embeddings outputs.
+        :param astype: return the embedding as ``torch`` or ``numpy`` type.
+        """
+        self.eval()
+        with torch.no_grad():
+            output = self.forward(inputs)
+
+            codes = "token_embeddings" if codes == "token" \
+                else "sentence_embedding"
+
+            embedding = output[codes]
+            if codes == "token_embeddings":
+                attn_mask = output["attention_mask"]
+                attn_mask = attn_mask.unsqueeze(-1).expand(
+                    embedding.size()).float()
+                embedding = embedding * attn_mask
+
+            if astype == "numpy":
+                embedding = embedding.to("cpu").numpy()
+
+        return embedding
 
     def _first_module(self):
         return self._modules[next(iter(self._modules))]
