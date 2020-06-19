@@ -1,11 +1,12 @@
-from typing import List, Union
+from typing import List, Optional, Union
 
+import faiss
 import spacy
 from nltk.tokenize import word_tokenize
 from tqdm.auto import tqdm
 
 from .datatypes import Papers
-from .utils import clean_punctuation
+from .utils import clean_punctuation, normalize_whitespace
 
 
 def frequency_summarizer(text: Union[str, List[str]],
@@ -111,3 +112,79 @@ def extract_questions(papers: Papers, min_length=30, sentence_ids=False):
     if not sentence_ids:
         return questions
     return questions, ids
+
+
+def tune_dataset_to_tasks(cord19: 'CORD19Dataset',
+                          encoder: 'SentenceTransformer',
+                          tasks: List[str],
+                          minlen: int = 10,
+                          size: int = -1,
+                          goal_size: Optional[int] = None,
+                          k_nn: Optional[int] = None,
+                          show_progress: bool = False) -> List[int]:
+    """Return a sample of ids tuned to an iterable of tasks.
+
+    param: minlen: filter, minimum length of titles.
+    param: size: sample size to use for obtaining the titles.
+    param: goal_size: expected size of a sample. if the expected size
+        is larger; random selected ids will be added to meet fulfillment
+    param: k_nn: k number of neighbors to query against the titles.
+    param: show_progress: wheather to display the progress of encoding.
+    """
+    sample = cord19.sample(-1)
+    if size > -1:
+        sample = sample[:size]
+
+    if k_nn is None and goal_size is not None:
+        # find best fit to top k, given number of queries per
+        # centroid (n tasks) in relation to the expected return
+        # size and the total samples available (n paper IDs)
+        ntasks = len(tasks)
+        k_nn = round(goal_size / ntasks) - ntasks % 2
+        maxk = len(sample) - goal_size
+        assert (k_nn * ntasks) <= maxk, (
+            'goal_size is larger than the number of queries possible given'
+            ' the sample size and number of tasks, choose a smaller goal.')
+    else:
+        raise ValueError(
+            'Expected either ``k_nn`` or ``goal_size`` values.')
+
+    paper_titles = {}
+    for pid in tqdm(sample, desc='titles'):
+        title = normalize_whitespace(cord19.title(pid))
+        if len(clean_punctuation(title)) <= minlen:
+            continue
+        if pid not in paper_titles:
+            paper_titles[pid] = title
+
+    paper_index = dict(enumerate(paper_titles.keys()))
+    titles = list(paper_titles.values())
+
+    titles_embed = encoder.encode(titles, show_progress=show_progress)
+    tasks_embed = encoder.encode(tasks, show_progress=show_progress)
+
+    ndim = titles_embed.shape[1]
+    index = faiss.IndexFlat(ndim)
+    index.add(titles_embed)
+    _, ids = index.search(tasks_embed, k_nn)
+
+    k_nn_ids = ids.flatten().tolist()
+    gold_ids = sorted(set([paper_index[i] for i in k_nn_ids]))
+    if goal_size is None:
+        return gold_ids
+
+    ntotal = len(gold_ids)
+    extra_ids = []
+    if ntotal < goal_size:
+        needs = goal_size - ntotal
+        count = 0
+        for need_id in sample:
+            if need_id in gold_ids:
+                continue
+            if count < needs:
+                extra_ids.append(need_id)
+                count += 1
+        assert len(extra_ids) + len(gold_ids) == goal_size
+
+    gold_ids.extend(extra_ids)
+    return gold_ids
