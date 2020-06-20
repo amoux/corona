@@ -115,25 +115,28 @@ def extract_questions(papers: Papers, min_length=30, sentence_ids=False):
     return questions, ids
 
 
-def extract_paper_titles(cord19: CORD19Dataset,
-                         minlen=10, size=-1) -> Dict[int, str]:
-    """Return a map of paper ids to titles extracted from the dataset."""
+def extract_titles(cord19: CORD19Dataset,
+                   minlen=10, size=-1) -> Dict[int, str]:
+    """Extract titles from the CORD19 dataset.
+
+    Returns Dict[int, str] a dict of mapped paper indices to titles.
+    """
     sample = cord19.sample(-1)
     if size > -1:
         sample = sample[:size]
 
-    paper_titles = {}
+    mapped_titles = {}
     for pid in tqdm(sample, desc='titles'):
         title = normalize_whitespace(cord19.title(pid))
         if len(clean_punctuation(title)) <= minlen:
             continue
-        if pid not in paper_titles:
-            paper_titles[pid] = title
+        if pid not in mapped_titles:
+            mapped_titles[pid] = title
 
-    return paper_titles
+    return mapped_titles
 
 
-def tune_dataset_to_tasks(
+def tune_ids_to_tasks(
         tasks: Union[List[str], List[List[str]]],
         encoder: 'SentenceTransformer',
         minlen: Optional[int] = 10,
@@ -143,7 +146,7 @@ def tune_dataset_to_tasks(
         target_size: Optional[int] = None,
         k_nn: Optional[int] = None,
         show_progress: bool = False) -> Union[List[int], List[List[int]]]:
-    """Return a sample of ids tuned to an iterable of tasks.
+    """Tune a sample of ids to a single or multiple task(s).
 
     param: tasks (Union[List[str], List[List[str]]]):
         An iterable of string sequences or a list of iterables of string
@@ -171,7 +174,7 @@ def tune_dataset_to_tasks(
         tasks = [tasks]
     if paper_titles is None:
         if cord19 is not None:
-            paper_titles = extract_paper_titles(cord19, minlen, n_size)
+            paper_titles = extract_titles(cord19, minlen, n_size)
         else:
             raise Exception('Expected an ``CORD19Dataset`` instance or '
                             'a Dict[int, str] ``paper_titles`` mapping.')
@@ -182,17 +185,14 @@ def tune_dataset_to_tasks(
 
     k_iter = []
     if k_nn is None and target_size is not None:
-        # find best fit to top k, given number of queries per
-        # centroid (n tasks) in relation to the expected return
-        # size and the total samples available (n paper IDs)
         for task in tasks:
             ntasks = len(task)
             k_nn = round(target_size / ntasks) - ntasks % 2
             maxk = len(sample) - target_size
             assert (k_nn * ntasks) <= maxk, (
-                'goal_size is larger than n queries possible given the '
-                'sample size and number of tasks, choose a smaller goal.'
-            )
+                'target_size is larger than n queries possible '
+                'given the sample size and number of tasks, pick '
+                'a smaller ``target_size`` or add more tasks.')
             k_iter.append(k_nn)
 
     db = encoder.encode(titles, 8, show_progress)
