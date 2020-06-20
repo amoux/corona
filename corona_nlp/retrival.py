@@ -179,9 +179,9 @@ def tune_ids_to_tasks(
             raise Exception('Expected an ``CORD19Dataset`` instance or '
                             'a Dict[int, str] ``paper_titles`` mapping.')
 
-    decode = dict(enumerate(paper_titles.keys()))
-    sample = list(paper_titles.keys())
     titles = list(paper_titles.values())
+    sample = list(paper_titles.keys())
+    decode = dict(enumerate(sample))
 
     k_iter = []
     if k_nn is None and target_size is not None:
