@@ -74,13 +74,15 @@ class Papers:
         return self.num_sents
 
     def __getitem__(self, item):
-        node, item = self._meta[item]
-        return self.cluster[node][item]
+        if isinstance(item, slice):
+            return [self.cluster[i[0]][i[1]] for i in self._meta[item]]
+        p_id, item = self._meta[item]
+        return self.cluster[p_id][item]
 
     def __iter__(self):
-        for index in self.cluster:
-            for sentence in self.cluster[index]:
-                yield sentence
+        for p_id in self.cluster:
+            for sent in self.cluster[p_id]:
+                yield sent
 
 
 def merge_papers(papers: List[Papers]) -> Papers:
