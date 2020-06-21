@@ -8,8 +8,21 @@ import numpy as np
 import torch
 from sentence_transformers import __version__
 from sentence_transformers.util import import_from_string
+from summarizer import Summarizer
 from torch import Tensor, nn
 from tqdm.auto import tqdm
+from transformers import BertConfig, BertModel, BertTokenizer
+
+
+class SummarizerTransformer:
+    @staticmethod
+    def load(model: str, tokenizer: BertTokenizer, device=None) -> Summarizer:
+        config = BertConfig.from_pretrained(model)
+        config.output_hidden_states = True
+        bert_model = BertModel.from_pretrained(model, config=config)
+        if device is not None:
+            bert_model = bert_model.to(device)
+        return Summarizer(custom_model=bert_model, custom_tokenizer=tokenizer)
 
 
 class SentenceTransformer(nn.Sequential):
