@@ -14,7 +14,7 @@ from tqdm.auto import tqdm
 from transformers import BertConfig, BertModel, BertTokenizer
 
 
-class SummarizerTransformer:
+class BertSummarizer:
     @staticmethod
     def load(model: str, tokenizer: BertTokenizer, device=None) -> Summarizer:
         config = BertConfig.from_pretrained(model)

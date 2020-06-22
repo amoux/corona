@@ -8,7 +8,7 @@ from transformers import BertForQuestionAnswering, BertTokenizer
 from .dataset import CORD19Dataset
 from .datatypes import Papers
 from .retrival import frequency_summarizer
-from .transformer import SentenceTransformer, SummarizerTransformer
+from .transformer import BertSummarizer, SentenceTransformer
 from .utils import clean_tokenization, normalize_whitespace
 
 
@@ -18,20 +18,15 @@ class QAEngine(CORD19Dataset):
     def __init__(self, source: Union[str, List[str]], papers: str,
                  index: str, encoder: str, model: str, **kwargs):
         super(QAEngine, self).__init__(source, **kwargs)
-        self.device = torch.device(
-            'cuda' if torch.cuda.is_available() else 'cpu'
-        )
         self.papers = Papers.from_disk(papers)
         self.index = faiss.read_index(index)
-        self.encoder = SentenceTransformer(encoder, device=self.device)
+        self.encoder = SentenceTransformer(encoder)
         self.tokenizer = BertTokenizer.from_pretrained(model,
                                                        do_lower_case=False)
         self.model = BertForQuestionAnswering.from_pretrained(model)
-        self.model.to(self.device)
         self.nlp = self.sentence_tokenizer.nlp()
         self._freq_summarizer = frequency_summarizer
-        self._bert_summarizer = SummarizerTransformer.load(
-            model, device=self.device, tokenizer=self.tokenizer)
+        self._bert_summarizer = BertSummarizer.load(model, self.tokenizer)
 
     def compress(self, sents: Union[str, List[str]], mode='bert') -> str:
         if mode == 'freq':
@@ -57,7 +52,6 @@ class QAEngine(CORD19Dataset):
                                             max_length=510,
                                             add_special_tokens=True,
                                             return_tensors='pt')
-        inputs = inputs.to(self.device)
         top_k = self.model(**inputs)
         start, end = (torch.argmax(top_k[0]),
                       torch.argmax(top_k[1]) + 1)
@@ -75,11 +69,13 @@ class QAEngine(CORD19Dataset):
                nprobe=1, mode: str = None) -> Dict[str, Any]:
         question = question.strip()
         dists, indices = self.similar(question, k, nprobe)
+
         sentences = []
         for index in indices.flatten():
             string = self.papers[index]
             if string == question:
                 string = self.papers[index + 1]
+
             doc = self.nlp(string)
             for sent in doc.sents:
                 string = clean_tokenization(sent.text)
@@ -93,12 +89,15 @@ class QAEngine(CORD19Dataset):
                 if string in sentences:
                     continue
                 sentences.append(string)
+
         context = ' '.join(sentences)
         if mode is not None and mode in ('freq', 'bert'):
             context = self.compress(context, mode=mode)
         context = normalize_whitespace(context)
+
         answer, context = self.decode(question, context)
         context = clean_tokenization(context)
         dists, indices = dists.tolist()[0], indices.tolist()[0]
+
         return {'answer': answer,
                 'context': context, 'dist': dists, 'ids': indices}
