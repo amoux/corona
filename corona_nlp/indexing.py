@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import Dict, List, Union
+from typing import Any, Dict, List, Union
 
 
 class PaperIndexer:
@@ -30,11 +30,11 @@ class PaperIndexer:
         self._map_files_to_ids(file_paths)
 
     @property
-    def num_papers(self):
+    def num_papers(self) -> int:
         return sum(self._bins)
 
     @property
-    def source_name(self):
+    def source_name(self) -> Union[str, List[str]]:
         if len(self.paths) == 1:
             return self.paths[0].name
         return [p.name for p in self.paths]
@@ -57,7 +57,7 @@ class PaperIndexer:
                 if minsize <= index <= maxsize:
                     return self.paths[i]
 
-    def _load_data(self, paper_id: str):
+    def _load_data(self, paper_id: str) -> Dict[str, Any]:
         path = self._index_dirpath(self.paper_index[paper_id])
         file_path = path.joinpath(f"{paper_id}{self.extension}")
         with file_path.open("rb") as file:
@@ -71,7 +71,8 @@ class PaperIndexer:
         idx2pid = self.index_paper
         return [idx2pid[idx] for idx in indices if idx in idx2pid]
 
-    def load_paper(self, index: int = None, paper_id: str = None):
+    def load_paper(self, index: int = None,
+                   paper_id: str = None) -> Dict[str, Any]:
         """Load a single paper and data by either index or paper ID."""
         if index is not None:
             paper = self.load_papers([index], None)
@@ -79,7 +80,8 @@ class PaperIndexer:
             paper = self.load_papers(None, [paper_id])
         return paper[0]
 
-    def load_papers(self, indices: List[int] = None, paper_ids: List[str] = None):
+    def load_papers(self, indices: List[int] = None,
+                    paper_ids: List[str] = None) -> List[Dict[str, Any]]:
         """Load many papers and data by either indices or paper ID's."""
         if indices is not None:
             if isinstance(indices, list) and isinstance(indices[0], int):
