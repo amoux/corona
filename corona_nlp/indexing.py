@@ -31,7 +31,7 @@ class PaperIndexer:
 
     @property
     def num_papers(self):
-        return len(self.index_paper)
+        return sum(self._bins)
 
     @property
     def source_name(self):
@@ -47,13 +47,14 @@ class PaperIndexer:
                 self.index_paper[index] = paper_id
 
     def _index_dirpath(self, index: int) -> Path:
-        if index <= self._bins[0]:
+        if len(self._bins) == 1:
             return self.paths[0]
         else:
-            size = 0
+            minsize = self.index_start
+            maxsize = minsize
             for i in range(len(self._bins)):
-                size += self._bins[i]
-                if index <= size:
+                maxsize += self._bins[i]
+                if minsize <= index <= maxsize:
                     return self.paths[i]
 
     def _load_data(self, paper_id: str):
