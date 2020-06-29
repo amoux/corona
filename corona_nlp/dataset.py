@@ -110,7 +110,7 @@ class CORD19Dataset(PaperIndexer):
                         papers = future.result()
                     except Exception as e:
                         print(f"{ids} generated an exception: {e}")
-                        raise
+                        break
                     else:
                         batch_.append(papers)
                         pbar.update(len(ids))

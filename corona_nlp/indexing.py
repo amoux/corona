@@ -34,9 +34,9 @@ class PaperIndexer:
 
         self._map_files_to_ids(file_paths)
         if len(self._bins) > 1:
-            x = np.array(self._bins).cumsum(0)
-            x[-1] += self.index_start
-            self._splits = x.tolist()
+            x = self._bins.copy()
+            x[0] += self.index_start - 1
+            self._splits = np.array(x).cumsum(0).tolist()
         del file_paths
 
     @property
@@ -57,36 +57,35 @@ class PaperIndexer:
                 self.index_paper[index] = paper_id
 
     def _index_dirpath(self, index: int) -> Path:
-        # return lower bound if index is less or equal item in first item
-        if len(self._bins) == 1 or index < self._bins[0]:
+        # return lower bound if one source or index is less or equal to the
+        # first item.
+        if len(self._bins) == 1 or index <= self._splits[0]:
             return self.paths[0]
 
-        # Interpolation search the correct path for a given index by
-        # returning the id to path closest to its maximum split size. A
+        # Interpolation search - searches the correct path for a given index
+        # by returning the id to path closest to its maximum split size. A
         # split is based on the cumulative sum of each item (a bin is the
-        # number of files in n directory). It also adjusts to the index
-        # starting position. That is if the number of directories (sources)
-        # is higher than one.
+        # number of files in n directory), after the first item value.
 
         def nearest_mid(start: int, end: int, x: List[int], y: int) -> int:
             m = start + ((end - start) // (x[end] - x[start])) * (y - x[start])
             return m
 
-        bins = self._splits
-        size = len(bins) - 1
-        maxid = bins[-1]
+        splits = self._splits
+        size = len(splits) - 1
+        maxid = splits[-1]
         first = 0
         last = size
 
         while first <= last:
-            mid = nearest_mid(first, last, x=bins, y=index)
+            mid = nearest_mid(first, last, x=splits, y=index)
             if mid > last or mid < first:
                 return None
-            if bins[mid] >= index:
+            if splits[mid] >= index:
                 return self.paths[mid]
-            elif index > bins[last - 1] and index <= maxid:
-                return self.paths[bins.index(maxid)]
-            if index > bins[mid]:
+            elif index > splits[last - 1] and index <= maxid:
+                return self.paths[splits.index(maxid)]
+            if index > splits[mid]:
                 first = mid + 1
             else:
                 last = mid - 1
