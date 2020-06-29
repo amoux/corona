@@ -31,18 +31,28 @@ class CORD19Dataset(PaperIndexer):
         else:
             self.sentence_tokenizer = SpacySentenceTokenizer(nlp_model)
 
-    def sample(self, k: int = None, seed: int = None) -> List[int]:
-        """Return all or k iterable of paper-id to index mappings.
+    def sample(self, k: int = None, s: int = None, seed=None) -> List[int]:
+        """Return a sample (all|random k) or split of paper ID's.
 
-        `k`: A sample from all available papers use `k=-1`. Otherwise, pass
-            `k=n` number of indices to load from the available dataset files.
+        :param k: number of ids to return from all samples, if `k=-1` then all
+            ids are returned sorted. Otherwise, if `k < max ids` -> shuffled.
+        :param s: return a split of all ids @ `s` e.g., if s=1 then all ids@1.
         """
-        random.seed(seed)
-        indices = list(self.index_paper.keys())
-        if k == -1:
-            return indices
-        assert k <= self.num_papers
-        return random.sample(indices, k=k)
+        if k is not None:
+            random.seed(seed)
+            ids = list(self.index_paper.keys())
+            if k == -1:
+                return ids
+            assert k <= self.num_papers
+            return random.sample(ids, k=k)
+
+        if s is not None:
+            splits = self._splits
+            assert s <= len(splits), f'Expected `s` between: [0,{len(splits)}]'
+            if s == 0:
+                return list(range(self.index_start, splits[s] + 1))
+            if s > 0:
+                return list(range(splits[s - 1] + 1, splits[s] + 1))
 
     def title(self, index: int = None, paper_id: str = None) -> str:
         return self.load_paper(index, paper_id)["metadata"]["title"]

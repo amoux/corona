@@ -56,6 +56,11 @@ class PaperIndexer:
                 self.paper_index[paper_id] = index
                 self.index_paper[index] = paper_id
 
+        ids = self.index_paper.keys()
+        setattr(self, "first_index", min(ids))
+        setattr(self, 'last_index', max(ids))
+        del ids
+
     def _index_dirpath(self, index: int) -> Path:
         # return lower bound if one source or index is less or equal to the
         # first item.
@@ -73,7 +78,6 @@ class PaperIndexer:
 
         splits = self._splits
         size = len(splits) - 1
-        maxid = splits[-1]
         first = 0
         last = size
 
@@ -83,8 +87,8 @@ class PaperIndexer:
                 return None
             if splits[mid] >= index:
                 return self.paths[mid]
-            elif index > splits[last - 1] and index <= maxid:
-                return self.paths[splits.index(maxid)]
+            elif index > splits[last - 1] and index <= self.last_index:
+                return self.paths[splits.index(self.last_index)]
             if index > splits[mid]:
                 first = mid + 1
             else:
