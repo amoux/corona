@@ -13,6 +13,10 @@ from torch import Tensor, nn
 from tqdm.auto import tqdm
 from transformers import BertConfig, BertModel, BertTokenizer
 
+from .modules import BertModule, PoolingModule
+
+_ST_INCOMPATIBLE_VERSION_TO_LATEST_HF = '0.2.6'
+
 
 class BertSummarizer:
     @staticmethod
@@ -43,14 +47,12 @@ class SentenceTransformer(nn.Sequential):
         `modules`: Iterable object of `nn.Module` instances.
         `device`: Computation device to choose.
         """
-        if modules is not None:
-            if not isinstance(modules, OrderedDict):
-                modules = OrderedDict([(str(i), m) for i, m in modules])
-
         if model_path is not None:
             model_path = Path(model_path)
+            modules_file = model_path.joinpath("modules.json")
             assert model_path.is_dir()
-            logging.info(f"loading model from: {model_path}")
+            assert modules_file.is_file()
+            logging.info(f"Loading model from path: {model_path}")
 
             config_file = model_path.joinpath("config.json")
             if config_file.is_file():
@@ -64,16 +66,24 @@ class SentenceTransformer(nn.Sequential):
                             "that case, try to update to the latest version"
                             ".\n\n\n".format(cfg['__version__'], __version__),
                         )
+        if modules is not None:
+            if not isinstance(modules, OrderedDict):
+                modules = OrderedDict([(str(i), m) for i, m in modules])
+        else:
             modules = OrderedDict()
-            modules_file = model_path.joinpath("modules.json")
-            if modules_file.is_file():
-                with modules_file.open("r") as file:
-                    contained_modules = json.load(file)
-                    for config in contained_modules:
-                        class_ = import_from_string(config["type"])
-                        module = model_path.joinpath(config["path"])
-                        module_class = class_.load(module.as_posix())
-                        modules[config["name"]] = module_class
+            with modules_file.open("r") as file:
+                contained_modules = json.load(file)
+
+            if __version__ <= _ST_INCOMPATIBLE_VERSION_TO_LATEST_HF:
+                models = [BertModule, PoolingModule]
+                for model, config in zip(models, contained_modules):
+                    path = model_path.joinpath(config["path"])
+                    modules[config["name"]] = model(path.as_posix())
+            else:
+                for config in contained_modules:
+                    model = import_from_string(config["type"])
+                    path = model_path.joinpath(config["path"])
+                    modules[config["name"]] = model.load(path.as_posix())
 
         super().__init__(modules)
         if device is None:
@@ -81,14 +91,15 @@ class SentenceTransformer(nn.Sequential):
             logging.info(f"using pytorch device {device}")
         self.device = torch.device(device)
         self.to(device)
-        self._tokenize_module = self._first_module().tokenize
-        self._features_module = self._first_module().get_sentence_features
+        # methods from the first module e.g., ``0_BERT```
+        self.basic_tokenize = self._first_module().tokenize
+        self.get_sentence_features = self._first_module().get_sentence_features
+        self.tokenizer = self._first_module().tokenizer
 
     def encode(self, sentences: List[str],
                batch_size: int = 8, show_progress: bool = True) -> np.array:
         """Encode an iterable of string sequences to a embedding matrix."""
         self.eval()
-
         lengths = np.argsort([len(sent) for sent in sentences])
         maxsize = lengths.size
         batch = range(0, maxsize, batch_size)
@@ -97,77 +108,22 @@ class SentenceTransformer(nn.Sequential):
 
         embeddings = []
         for i in batch:
-            maxlen = 0
-            tokens = []
+            splits = []
             for j in lengths[i: min(i + batch_size, maxsize)]:
-                ids = self.string_to_token_ids(sentences[j])
-                maxlen = max(maxlen, len(ids))
-                tokens.append(ids)
+                tokens = self.tokenizer.tokenize(sentences[j])
+                splits.append(tokens)
 
-            inputs = dict([(key, []) for key in self.input_attrs])
-            for ids in tokens:
-                features = self.encode_features(ids, max_seqlen=maxlen)
-                for input in features:
-                    inputs[input].append(features[input])
-
-            for input in inputs:
-                inputs[input] = torch.cat(inputs[input]).to(self.device)
-
+            batch = self.tokenizer(text=splits,
+                                   is_pretokenized=True,
+                                   padding='longest',
+                                   return_tensors='pt').to(self.device)
             with torch.no_grad():
-                output = self.forward(inputs)
+                output = self.forward(batch)
                 embedding = output["sentence_embedding"]
                 embeddings.extend(embedding.to("cpu").numpy())
 
         embeddings = [embeddings[i] for i in np.argsort(lengths)]
         return np.array(embeddings)
-
-    def string_to_token_ids(self, string: str) -> List[int]:
-        """Encode a string sequence into a sequence of token ids."""
-        return self._tokenize_module(string)
-
-    def encode_features(self, token_ids: List[int],
-                        max_seqlen: int) -> Dict[str, Tensor]:
-        """Encode a sequence of token ids to sentence features.
-
-        :param token_ids: List[int], sequence of token ids.
-        :param max_seqlen: int, maximum size of a single or all sequence(s)
-            of token ids.
-        """
-        return self._features_module(token_ids, max_seqlen)
-
-    def encode_features_plus(self,
-                             token_ids: Union[List[int], List[List[int]]],
-                             max_seqlen: int = None) -> Dict[str, Tensor]:
-        """"Encode sequence(s) of ids to sentence features before model.
-
-        :param token_ids: List[int] | List[List[int]], sequence(s) of ids.
-        :param max_seqlen: Optional[int], maximum size of a single or all
-            sequences, if None; max_seqlen is computed automatically.
-
-        Returns Dict[str, Tensor], with tensors added to ``self.device``.
-        """
-        if isinstance(token_ids[0], list):
-            if max_seqlen is None:
-                max_seqlen = len(max(token_ids, key=len))
-        elif isinstance(token_ids[0], int):
-            if max_seqlen is None:
-                max_seqlen = len(token_ids)
-            token_ids = [token_ids]
-        else:
-            raise TypeError(
-                "Expected sequence(s) of ids, List[int] or List[List[int]]")
-
-        inputs = dict([(key, []) for key in self.input_attrs])
-        for ids in token_ids:
-            features = self.encode_features(ids, max_seqlen)
-            for input in features:
-                inputs[input].append(features[input])
-
-        for input in inputs:
-            features = torch.cat(inputs[input])
-            inputs[input] = features.to(self.device)
-
-        return inputs
 
     def embed(self, inputs: Dict[str, Tensor], codes: str = "sentence",
               astype: str = "torch") -> Union[Tensor, np.array]:
@@ -181,7 +137,6 @@ class SentenceTransformer(nn.Sequential):
         self.eval()
         with torch.no_grad():
             output = self.forward(inputs)
-
             codes = "token_embeddings" if codes == "token" \
                 else "sentence_embedding"
 

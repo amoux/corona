@@ -49,6 +49,14 @@ class PaperIndexer:
             return self.paths[0].name
         return [p.name for p in self.paths]
 
+    def file_path(self, id: Union[int, str]) -> Path:
+        """Return the path to file from an integer or string ID."""
+        if isinstance(id, str):
+            id = self.paper_index[id]
+        file = self.index_paper[id]
+        path = self._index_dirpath(id)
+        return path.joinpath(file + self.extension)
+
     def _map_files_to_ids(self, json_files: List[str]) -> None:
         for index, file in enumerate(json_files, self.index_start):
             paper_id = file.name.replace(self.extension, "")
