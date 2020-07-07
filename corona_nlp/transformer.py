@@ -182,11 +182,13 @@ class SentenceTransformer(nn.Sequential):
                                             return_tensors='pt')
         return inputs.to(self.device)
 
-    def encode_sentences(self, text: Union[str, List[str], List[List[str]]],
-                         padding: Union[str, bool] = 'max_length',
-                         truncation: Union[str, bool] = True,
-                         max_seq_length: Optional[int] = None,
-                         is_pretokenized: bool = False) -> Dict[str, Tensor]:
+    def encode_sentences(
+            self,
+            text: Union[str, List[str], List[List[str]]],
+            padding: Union[str, bool] = 'max_length',
+            truncation: Union[str, bool] = True,
+            max_seq_length: Optional[int] = None,
+            is_pretokenized: Optional[bool] = False) -> Dict[str, Tensor]:
         """Encode sequence(s) to inputs of token-ids, segments, and mask.
 
         NOTE: The `text` param expects a sequence or list of sequences
@@ -215,8 +217,8 @@ class SentenceTransformer(nn.Sequential):
         encode_batch(batch_pretokenized,        # or batch_sentences
                      padding='longest',         < causes fallback >
                      truncation=False,          < causes fallback >
-                     max_seq_length=max_length,
-                     is_pretokenized=False) # ignored if max_seq_length=True
+                     max_seq_length=max_length, < will be ignored >
+                     is_pretokenized=False) # applies to true|false
         ```
         :param text: A sequence or batch of sequences to be encoded.
             Each sequence can be a string or a list of strings (pre-
@@ -225,15 +227,14 @@ class SentenceTransformer(nn.Sequential):
             then, you must set `is_pretokenized=True` (to lift the
             ambiguity with a batch of sequences).
         """
-        # Passes through this block when max_seq_length is not given.
         if max_seq_length is None:
-            # Tokenize If text is is a single string sequence.
+            # If a string sequence.
             if isinstance(text, str):
                 text = self.tokenizer.tokenize(text)
                 max_seq_length = len(text)
 
             elif isinstance(text, list):
-                # If is list of list of strings.
+                # If list of string sequences.
                 if isinstance(text[0][:1], str):
                     sequences: List[List[str]] = []
                     max_seqlen = 0
@@ -242,7 +243,7 @@ class SentenceTransformer(nn.Sequential):
                         max_seqlen = max(max_seqlen, len(tokens))
                         sequences.append(tokens)
                     text, max_seq_length = sequences, max_seqlen
-                # If list of list of tokens.
+                # If list of list of token sequences.
                 elif isinstance(text[0][:1], list):
                     max_seq_length = len(max(text, key=len))
 
