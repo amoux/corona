@@ -49,18 +49,31 @@ class BertModule(nn.Module):
             text=text, add_special_tokens=add_special_tokens)
         return token_ids
 
-    def get_sentence_features(self,
-                              text: Union[str, List[str], List[int]],
+    def get_sentence_features(self, text: Union[str, List[str], List[int]],
                               max_seq_length: int = None) -> Dict[str, Tensor]:
-        if max_seq_length is None and isinstance(text, str):
-            text = self.tokenize(text, add_special_tokens=False)
-            max_seq_length = len(text)
+        """Convert a sequence to inputs of token-ids, segment-ids and mask.
+
+        Note: The `text` parameter expects values (a string or tokens) without
+            added special tokens, e.g,. `[CLS]` and `[SEP]` or in integer form.
+
+        :param text: Sequence to be encoded. This can be a string, a list of
+            strings (tokenized string using the `tokenizer.tokenize` method)
+            or a list of integers (tokenized string ids using the `tokenize`
+            or `tokenizer.convert_tokens_to_ids` method.
+        """
+        if max_seq_length is None:
+            if isinstance(text, str):
+                text = self.tokenize(text, add_special_tokens=False)
+                max_seq_length = len(text)
+            elif isinstance(text[0], int) or isinstance(text[0], str) \
+                    and isinstance(text[:1], list):  # is valid string token
+                max_seq_length = len(text)
 
         # Add space for [CLS] and [SEP] special tokens
         max_length = min(max_seq_length, self.max_seq_length) + 2
         inputs = self.tokenizer.encode_plus(text=text,
                                             max_length=max_length,
-                                            truncation=True,
+                                            padding=True,
                                             return_tensors='pt')
         return inputs
 
@@ -84,7 +97,3 @@ class BertModule(nn.Module):
         with config.open('r') as file:
             config = json.load(file)
         return BertModule(model_name_or_path=path, **config)
-
-    @staticmethod
-    def from_pretrained(model_name_or_path: str, **kwargs) -> 'BertModule':
-        return BertModule(model_name_or_path, tokenizer_kwargs=kwargs)
