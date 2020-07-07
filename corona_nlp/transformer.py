@@ -88,8 +88,9 @@ class SentenceTransformer(nn.Sequential):
         self.device = torch.device(device)
         self.to(device)
         # methods from the first module e.g., ``0_BERT```
-        self.basic_tokenize = self._first_module().tokenize
         self.get_sentence_features = self._first_module().get_sentence_features
+        self.max_seq_length = self._first_module().max_seq_length
+        self.tokenize = self._first_module().tokenize
         self.tokenizer = self._first_module().tokenizer
 
     def _first_module(self):
