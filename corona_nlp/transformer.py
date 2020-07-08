@@ -146,8 +146,7 @@ class SentenceTransformer(nn.Sequential):
             embedding = output[coding]
             if coding == 'token_embeddings':
                 attn_mask = output['attention_mask']
-                attn_mask = attn_mask.unsqueeze(-1).expand(
-                    embedding.size()).float()
+                attn_mask.unsqueeze(-1).expand(embedding.size()).float()
                 embedding = embedding * attn_mask
 
             if astype == 'numpy':
