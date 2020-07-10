@@ -219,8 +219,9 @@ class SentenceTransformer(nn.Sequential):
             ambiguity with a batch of sequences).
         :param max_length: If None, `max_length` is computed automatically
             for either; a string or list of strings (pretokenized). Since
-            - `max_length` is obtained, `padding` is set to `max_length` and
-            `is_pretokenized=True` - which are strategies suited to the model.
+            - `max_length` is obtained, `padding` is set to `max_length`,
+            and `is_pretokenized` is set to True - which are strategies
+            suited to the model.
         """
         if max_length is None:
             # If a string sequence.
@@ -241,7 +242,7 @@ class SentenceTransformer(nn.Sequential):
                 elif isinstance(text[0][:1], list):
                     max_length = len(max(text, key=len))
             # Any text variation is pre-tokenized within this < if > block.
-            padding = 'max_length' if padding is None else padding
+            padding = 'max_length' if padding is False else padding
             is_pretokenized = True
         # Prepend two spaces for [CLS] and [SEP] special tokens.
         max_length = min(max_length, self.max_seq_length) + 2
