@@ -211,36 +211,16 @@ class SentenceTransformer(nn.Sequential):
             `[SEP]`. This method should be used only with sequences of
             `type=str` and not of `type=int`.
 
-        * Padding and truncation strategy: `padding to specific length`
-
-        - Encoding a list of sequences of strings (sentences) List[str]
-
-        ```python
-        encode_sentences(batch_sentences,     # or tokenized batch
-                         padding='max_length',
-                         truncation=True,
-                         max_seq_length=None, # computed automatically
-                         is_pretokenized=False)
-        ```
-
-        - The following arg values cause a fallback to model's default
-            max_length (meaning, a custom max_length value is ignored).
-
-        ```python
-        ...
-        max_length = len(max(batch_pretokenized, key=len))
-        encode_batch(batch_pretokenized,        # or batch_sentences
-                     padding='longest',         < causes fallback >
-                     truncation=False,          < causes fallback >
-                     max_seq_length=max_length, < will be ignored >
-                     is_pretokenized=False) # applies to true|false
-        ```
         :param text: A sequence or batch of sequences to be encoded.
             Each sequence can be a string or a list of strings (pre-
             tokenized string). If the sequences are provided as list
             of strings (pretokenized), and `max_seq_length` is given
             then, you must set `is_pretokenized=True` (to lift the
             ambiguity with a batch of sequences).
+        :param max_length: If None, `max_length` is computed automatically
+            for either; a string or list of strings (pretokenized). Since
+            - `max_length` is obtained, `padding` is set to `max_length` and
+            `is_pretokenized=True` - which are strategies suited to the model.
         """
         if max_length is None:
             # If a string sequence.
@@ -261,7 +241,7 @@ class SentenceTransformer(nn.Sequential):
                 elif isinstance(text[0][:1], list):
                     max_length = len(max(text, key=len))
             # Any text variation is pre-tokenized within this < if > block.
-            padding = True if padding is None else padding
+            padding = 'max_length' if padding is None else padding
             is_pretokenized = True
         # Prepend two spaces for [CLS] and [SEP] special tokens.
         max_length = min(max_length, self.max_seq_length) + 2
