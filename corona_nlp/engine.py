@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Tuple, Union
 import faiss
 import numpy as np
 import torch
-from transformers import BertForQuestionAnswering, BertTokenizer
+from transformers import BertForQuestionAnswering
 
 from .dataset import CORD19Dataset
 from .datatypes import Papers
@@ -21,8 +21,7 @@ class QAEngine(CORD19Dataset):
         self.papers = Papers.from_disk(papers)
         self.index = faiss.read_index(index)
         self.encoder = SentenceTransformer(encoder)
-        self.tokenizer = BertTokenizer.from_pretrained(model,
-                                                       do_lower_case=False)
+        self.tokenizer = encoder.tokenizer
         self.model = BertForQuestionAnswering.from_pretrained(model)
         self.nlp = self.sentence_tokenizer.nlp()
         self._freq_summarizer = frequency_summarizer

@@ -146,8 +146,7 @@ class SentenceTransformer(nn.Sequential):
             embedding = output[coding]
             if coding == 'token_embeddings':
                 attn_mask = output['attention_mask']
-                attn_mask = attn_mask.unsqueeze(-1).expand(
-                    embedding.size()).float()
+                attn_mask.unsqueeze_(-1).expand(embedding.size()).float()
                 embedding = embedding * attn_mask
 
             if astype == 'numpy':
@@ -155,8 +154,14 @@ class SentenceTransformer(nn.Sequential):
 
         return embedding
 
-    def encode_sentence(self, text: Union[str, List[str], List[int]],
-                        max_seq_length: int = None) -> Dict[str, Tensor]:
+    def encode_sentence(
+            self, text: Union[str, List[str], List[int]],
+            max_length: int = None,
+            padding: Union[bool, str] = False,
+            truncation: Union[bool, str] = False,
+            is_pretokenized: bool = False,
+            return_tensors: str = None,
+    ) -> Dict[str, Union[List[int], np.array, Tensor]]:
         """Encode a sequence to inputs of token-ids, segment-ids and mask.
 
         Note: The `text` parameter expects values (a string or tokens) without
@@ -166,30 +171,39 @@ class SentenceTransformer(nn.Sequential):
             strings (tokenized string using the `tokenizer.tokenize` method)
             or a list of integers (tokenized string ids using the `tokenize`
             or `tokenizer.convert_tokens_to_ids` method.
+        :param max_length: If None, `max_length` is computed automatically
+            for either; a string or list of strings (pretokenized). Since
+            - `max_length` is obtained from either int|str - `padding` and
+            `is_pretokenized` parameters are set to True.
         """
-        if max_seq_length is None:
+        if max_length is None:
             if isinstance(text, str):
-                text = self.tokenize(text, add_special_tokens=False)
-                max_seq_length = len(text)
+                text: List[str] = self.tokenizer.tokenize(text)
+                max_length = len(text)
             elif isinstance(text[0], int) or isinstance(text[0], str) \
-                    and isinstance(text[:1], list):  # is valid string token
-                max_seq_length = len(text)
-
+                    and isinstance(text[:1], list):
+                max_length = len(text)
+            # Any text variation is pre-tokenized within this < if > block.
+            padding = is_pretokenized = True
         # Prepend two spaces for [CLS] and [SEP] special tokens.
-        max_length = min(max_seq_length, self.max_seq_length) + 2
-        inputs = self.tokenizer.encode_plus(text=text,
+        max_length = min(max_length, self.max_seq_length) + 2
+        inputs = self.tokenizer.encode_plus(text, padding=padding,
+                                            truncation=truncation,
                                             max_length=max_length,
-                                            padding=True,
-                                            return_tensors='pt')
-        return inputs.to(self.device)
+                                            is_pretokenized=is_pretokenized,
+                                            return_tensors=return_tensors)
+        if return_tensors == 'pt':
+            return inputs.to(self.device)
+        return inputs
 
     def encode_sentences(
-            self,
-            text: Union[str, List[str], List[List[str]]],
-            padding: Union[str, bool] = 'max_length',
-            truncation: Union[str, bool] = True,
-            max_seq_length: Optional[int] = None,
-            is_pretokenized: Optional[bool] = False) -> Dict[str, Tensor]:
+        self, text: Union[str, List[str], List[List[str]]],
+        max_length: int = None,
+        padding: Union[bool, str] = False,
+        truncation: Union[bool, str] = False,
+        is_pretokenized: bool = False,
+        return_tensors: str = None,
+    ) -> Dict[str, Union[List[List[int]], np.array, Tensor]]:
         """Encode sequence(s) to inputs of token-ids, segments, and mask.
 
         NOTE: The `text` param expects a sequence or list of sequences
@@ -228,35 +242,34 @@ class SentenceTransformer(nn.Sequential):
             then, you must set `is_pretokenized=True` (to lift the
             ambiguity with a batch of sequences).
         """
-        if max_seq_length is None:
+        if max_length is None:
             # If a string sequence.
             if isinstance(text, str):
-                text = self.tokenizer.tokenize(text)
-                max_seq_length = len(text)
-
+                text: List[str] = self.tokenizer.tokenize(text)
+                max_length = len(text)
             elif isinstance(text, list):
                 # If list of string sequences.
                 if isinstance(text[0][:1], str):
-                    sequences: List[List[str]] = []
-                    max_seqlen = 0
+                    batch_tokenized: List[List[str]] = []
+                    maxlen = 0
                     for string in text:
                         tokens = self.tokenizer.tokenize(string)
-                        max_seqlen = max(max_seqlen, len(tokens))
-                        sequences.append(tokens)
-                    text, max_seq_length = sequences, max_seqlen
+                        maxlen = max(maxlen, len(tokens))
+                        batch_tokenized.append(tokens)
+                    text, max_length = batch_tokenized, maxlen
                 # If list of list of token sequences.
                 elif isinstance(text[0][:1], list):
-                    max_seq_length = len(max(text, key=len))
-
+                    max_length = len(max(text, key=len))
             # Any text variation is pre-tokenized within this < if > block.
+            padding = True if padding is None else padding
             is_pretokenized = True
-
         # Prepend two spaces for [CLS] and [SEP] special tokens.
-        max_length = min(max_seq_length, self.max_seq_length) + 2
-        batch = self.tokenizer(text=text,
-                               is_pretokenized=is_pretokenized,
-                               padding=padding,
+        max_length = min(max_length, self.max_seq_length) + 2
+        batch = self.tokenizer(text, padding=padding,
                                truncation=truncation,
                                max_length=max_length,
-                               return_tensors='pt').to(self.device)
+                               is_pretokenized=is_pretokenized,
+                               return_tensors=return_tensors)
+        if return_tensors == 'pt':
+            return batch.to(self.device)
         return batch
