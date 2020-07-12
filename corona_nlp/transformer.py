@@ -204,7 +204,7 @@ class SentenceTransformer(nn.Sequential):
         is_pretokenized: bool = False,
         return_tensors: str = None,
     ) -> Dict[str, Union[List[List[int]], np.array, Tensor]]:
-        """Encode sequence(s) to inputs of token-ids, segments, and mask.
+        """Batch encode sequence(s) to inputs of token-ids, segments, and mask.
 
         NOTE: The `text` param expects a sequence or list of sequences
             of strings without added special tokens, e.g,. `[CLS]` and
@@ -219,9 +219,8 @@ class SentenceTransformer(nn.Sequential):
             ambiguity with a batch of sequences).
         :param max_length: If None, `max_length` is computed automatically
             for either; a string or list of strings (pretokenized). Since
-            - `max_length` is obtained, `padding` is set to `max_length`,
-            and `is_pretokenized` is set to True - which are strategies
-            suited to the model.
+            - `max_length` is obtained, `padding` and `truncation` are set
+            to True - strategies suited for batching and the model.
         """
         if max_length is None:
             # If a string sequence.
@@ -242,7 +241,8 @@ class SentenceTransformer(nn.Sequential):
                 elif isinstance(text[0][:1], list):
                     max_length = len(max(text, key=len))
             # Any text variation is pre-tokenized within this < if > block.
-            padding = 'max_length' if padding is False else padding
+            padding = True if padding is False else padding
+            truncation = True if truncation is False else truncation
             is_pretokenized = True
         # Prepend two spaces for [CLS] and [SEP] special tokens.
         max_length = min(max_length, self.max_seq_length) + 2
