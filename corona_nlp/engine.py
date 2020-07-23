@@ -21,7 +21,7 @@ class QAEngine(CORD19Dataset):
         self.papers = Papers.from_disk(papers)
         self.index = faiss.read_index(index)
         self.encoder = SentenceTransformer(encoder)
-        self.tokenizer = encoder.tokenizer
+        self.tokenizer = self.encoder.tokenizer
         self.model = BertForQuestionAnswering.from_pretrained(model)
         self.nlp = self.sentence_tokenizer.nlp()
         self._freq_summarizer = frequency_summarizer
@@ -48,7 +48,6 @@ class QAEngine(CORD19Dataset):
     def decode(self, question: str, context: str) -> Tuple[str, str]:
         inputs = self.tokenizer.encode_plus(text=question.strip(),
                                             text_pair=context,
-                                            max_length=510,
                                             add_special_tokens=True,
                                             return_tensors='pt')
         top_k = self.model(**inputs)

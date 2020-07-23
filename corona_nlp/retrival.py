@@ -116,16 +116,28 @@ def extract_questions(papers: Papers, min_length=30, sentence_ids=False):
 
 
 def extract_titles(cord19: CORD19Dataset,
-                   minlen=10, size=-1) -> Dict[int, str]:
+                   sample: Optional[List[int]] = None,
+                   maxids: int = -1,
+                   minlen: int = 10) -> Dict[int, str]:
     """Extract titles from the CORD19 dataset.
+
+    param: sample: (optional) An existing list of integer ids (paper indices).
+        Otherwise if None; ids extracted from the `COR19Dataset` instance.
+    param: maxids: Number of ids to slice, if `-1` then all ids are used.
+    param: minlen: Minimum title string length (filtered without punctuation).
 
     Returns Dict[int, str] a dict of mapped paper indices to titles.
     """
-    sample = cord19.sample(-1)
-    if size > -1:
-        sample = sample[:size]
-
     mapped_titles = {}
+    if sample is None:
+        sample = cord19.sample(-1)
+    else:
+        assert isinstance(sample, list)
+        assert isinstance(sample[0], int)
+
+    if maxids > -1:
+        sample = sample[:maxids]
+
     for pid in tqdm(sample, desc='titles'):
         title = normalize_whitespace(cord19.title(pid))
         if len(clean_punctuation(title)) <= minlen:
@@ -174,7 +186,7 @@ def tune_ids_to_tasks(
         tasks = [tasks]
     if paper_titles is None:
         if cord19 is not None:
-            paper_titles = extract_titles(cord19, minlen, n_size)
+            paper_titles = extract_titles(cord19, maxids=n_size, minlen=minlen)
         else:
             raise Exception('Expected an ``CORD19Dataset`` instance or '
                             'a Dict[int, str] ``paper_titles`` mapping.')
@@ -195,17 +207,17 @@ def tune_ids_to_tasks(
                 'a smaller ``target_size`` or add more tasks.')
             k_iter.append(k_nn)
 
-    db = encoder.encode(titles, 8, show_progress)
-    ndim = db.shape[1]
+    embedded_titles = encoder.encode(titles, 8, show_progress)
+    ndim = embedded_titles.shape[1]
     index = faiss.IndexFlat(ndim)
-    index.add(db)
+    index.add(embedded_titles)
 
     gold_ids = []
-    for id in range(len(k_iter)):
-        topk = k_iter[id]
-        w_x = encoder.encode(tasks[id], 8, show_progress)
-        knn = index.search(w_x, topk)[1].flatten().tolist()
-        ids = sorted(set([decode[k] for k in knn]))
+    for i in range(len(k_iter)):
+        topk = k_iter[i]
+        task = encoder.encode(tasks[i], 8, show_progress)
+        k_nn = index.search(task, topk)[1].flatten().tolist()
+        ids = sorted(set([decode[k] for k in k_nn]))
         if target_size is None:
             gold_ids.append(ids)
         else:
