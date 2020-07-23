@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Tuple, Union
 import faiss
 import numpy as np
 import torch
+
 from transformers import BertForQuestionAnswering
 
 from .dataset import CORD19Dataset
@@ -15,17 +16,28 @@ from .utils import clean_tokenization, normalize_whitespace
 class QAEngine(CORD19Dataset):
     nprobe_list = [1, 4, 16, 64, 256]
 
-    def __init__(self, source: Union[str, List[str]], papers: str,
-                 index: str, encoder: str, model: str, **kwargs):
+    def __init__(self, source: Union[str, List[str]], papers: str, index: str,
+                 encoder: str, model: str, model_device='cpu', **kwargs):
         super(QAEngine, self).__init__(source, **kwargs)
         self.papers = Papers.from_disk(papers)
         self.index = faiss.read_index(index)
         self.encoder = SentenceTransformer(encoder)
         self.tokenizer = self.encoder.tokenizer
         self.model = BertForQuestionAnswering.from_pretrained(model)
+        if model_device == 'cuda':
+            # The encoder automatically sets to CUDA if available.
+            self.model = self.model.to(self.encoder.device)
         self.nlp = self.sentence_tokenizer.nlp()
         self._freq_summarizer = frequency_summarizer
         self._bert_summarizer = BertSummarizer.load(model, self.tokenizer)
+
+    @property
+    def engine_devices(self) -> Dict[str, torch.device]:
+        return dict(
+            summarizer_model_device=self._bert_summarizer.model.device,
+            sentence_transformer_model_device=self.encoder.device,
+            question_answering_model_device=self.model.device,
+        )
 
     def compress(self, sents: Union[str, List[str]], mode='bert') -> str:
         if mode == 'freq':
@@ -50,6 +62,9 @@ class QAEngine(CORD19Dataset):
                                             text_pair=context,
                                             add_special_tokens=True,
                                             return_tensors='pt')
+        if self.model.device.type == 'cuda':
+            inputs = inputs.to(self.model.device)
+
         top_k = self.model(**inputs)
         start, end = (torch.argmax(top_k[0]),
                       torch.argmax(top_k[1]) + 1)
