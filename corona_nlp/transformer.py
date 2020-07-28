@@ -111,18 +111,23 @@ class SentenceTransformer(nn.Sequential):
 
         embeddings = []
         for i in batches:
-            splits = []
+            splits: List[List[int]] = []
+            maxlen = 0
             for j in lengths[i: min(i + batch_size, maxsize)]:
-                tokens = self.tokenizer.tokenize(sentences[j])
+                string = sentences[j]
+                tokens = self.tokenizer.encode(string, None, False)
+                maxlen = max(maxlen, len(tokens))
                 splits.append(tokens)
 
-            batch = self.tokenizer(text=splits,
-                                   is_pretokenized=True,
-                                   padding='longest',
-                                   return_tensors='pt').to(self.device)
+            max_length = min(maxlen, self.max_seq_length) + 2
+            batch = self.tokenizer.batch_encode_plus(splits, padding=True,
+                                                     truncation=True,
+                                                     max_length=max_length,
+                                                     is_pretokenized=True,
+                                                     return_tensors='pt',
+                                                     ).to(self.device)
             with torch.no_grad():
-                output = self.forward(batch)
-                embedding = output['sentence_embedding']
+                embedding = self.forward(batch)['sentence_embedding']
                 embeddings.extend(embedding.to('cpu').numpy())
 
         embeddings = [embeddings[i] for i in np.argsort(lengths)]
@@ -142,16 +147,13 @@ class SentenceTransformer(nn.Sequential):
             output = self.forward(inputs)
             coding = 'token_embeddings' if coding == 'token' \
                 else 'sentence_embedding'
-
             embedding = output[coding]
             if coding == 'token_embeddings':
                 attn_mask = output['attention_mask']
                 attn_mask.unsqueeze_(-1).expand(embedding.size()).float()
                 embedding = embedding * attn_mask
-
             if astype == 'numpy':
                 embedding = embedding.to('cpu').numpy()
-
         return embedding
 
     def encode_sentence(
