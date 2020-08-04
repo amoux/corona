@@ -32,6 +32,10 @@ class QAEngine(CORD19Dataset):
         self._bert_summarizer = BertSummarizer.load(model, self.tokenizer)
 
     @property
+    def max_num_sents(self) -> int:
+        return len(self.papers) - 1
+
+    @property
     def engine_devices(self) -> Dict[str, torch.device]:
         return dict(
             summarizer_model_device=self._bert_summarizer.model.device,
@@ -86,7 +90,7 @@ class QAEngine(CORD19Dataset):
         sentences = []
         for index in indices.flatten():
             string = self.papers[index]
-            if string == question:
+            if string == question and index + 1 <= self.max_num_sents:
                 string = self.papers[index + 1]
 
             doc = self.nlp(string)
@@ -97,7 +101,7 @@ class QAEngine(CORD19Dataset):
                         and not sent[-1].is_bracket
                         and not sent[-1].is_quote
                         and not sent[-1].is_stop
-                            and not sent[-1].is_punct):
+                        and not sent[-1].is_punct):
                         string = f'{string}.'
                 if string in sentences:
                     continue
