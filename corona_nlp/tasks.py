@@ -3,7 +3,7 @@ TASK9 = dict(
     question='What is known details transmission, incubation, and environmental stability?',
     details=('What do we know details natural history, transmission, and diagnostics for the '
              'virus? What have we learned details infection prevention and control?'),
-    recipe=[
+    tasks=[
         'Range of incubation periods for the disease in humans (and how this varies '
         'across age and health status) and how long individuals are contagious, even '
         'after recovery.',
@@ -36,7 +36,7 @@ TASK9 = dict(
 TASK8 = dict(
     question='What do we know details COVID-19 risk factors?',
     details='What have we learned from epidemiological studies?',
-    recipe=[
+    tasks=[
         'Potential risk factors on smoking, pre-existing pulmonary disease.',
         'Potential risk factors on co-infections (determine whether co-existing '
         'respiratory/viral infections make the virus more transmissible or virulent) '
@@ -59,7 +59,7 @@ TASK7 = dict(
     question='What do we know details vaccines and therapeutics?',
     details=("What has been published concerning research and development "
              "and evaluation efforts of vaccines and therapeutics?"),
-    recipe=[
+    tasks=[
         'Effectiveness of drugs being developed and tried to treat COVID-19 patients.',
         'Clinical and bench trials to investigate less common viral inhibitors '
         'against COVID-19 such as naproxen, clarithromycin, and minocyclinethat that '
@@ -90,7 +90,7 @@ TASK6 = dict(
     question='What do we know details virus genetics, origin, and evolution?',
     details=("What do we know details the virus origin and management measures "
              "at the human-animal interface?"),
-    recipe=[
+    tasks=[
         'Real-time tracking of whole genomes and a mechanism for coordinating the '
         'rapid dissemination of that information to inform the development of '
         'diagnostics and therapeutics and to track variations of the virus over time.',
@@ -120,7 +120,7 @@ TASK5 = dict(
              'been published concerning alternative methods to advise on disease '
              'management? What has been published concerning processes of care? What do we '
              'know details the clinical characterization and management of the virus?'),
-    recipe=[
+    tasks=[
         'Resources to support skilled nursing facilities and long term care '
         'facilities.',
         'Mobilization of surge medical staff to address shortages in overwhelmed '
@@ -163,7 +163,7 @@ TASK4 = dict(
     question='What do we know details the effectiveness of non-pharmaceutical interventions?',
     details=('What is known details equity and barriers to compliance for '
              'non-pharmaceutical interventions?'),
-    recipe=[
+    tasks=[
         'Guidance on ways to scale up NPIs in a more coordinated way (e.g., establish '
         'funding, infrastructure and authorities to support real time, authoritative '
         '(qualified participants) collaboration with all states to gain consensus on '
@@ -198,7 +198,7 @@ TASK3 = dict(
     question='What has been published details ethical and social science considerations?',
     details=('What has been published concerning ethical considerations for research? What '
              'has been published concerning social sciences at the outbreak response?'),
-    recipe=[
+    tasks=[
         'Efforts to articulate and translate existing ethical principles and '
         'standards to salient issues in COVID-2019.',
         'Efforts to embed ethics across all thematic areas, engage with novel ethical '
@@ -230,7 +230,7 @@ TASK2 = dict(
              'communication? What has been published details communicating with high-risk '
              'populations? What has been published to clarify community measures? What has '
              'been published details equity considerations and problems of inequity?'),
-    recipe=[
+    tasks=[
         'Methods for coordinating data-gathering with standardized nomenclature.',
         'Sharing response information among planners, providers, and others.',
         'Understanding and mitigating barriers to information-sharing.',
@@ -266,7 +266,7 @@ TASK1 = dict(
     details=('What has been published concerning systematic, holistic approach to '
              'diagnostics (from the public health surveillance perspective to being able '
              'to predict clinical outcomes)?'),
-    recipe=[
+    tasks=[
         'How widespread current exposure is to be able to make immediate policy '
         'recommendations on mitigation measures. Denominators for testing and a '
         'mechanism for rapidly sharing that information, including demographics, to '

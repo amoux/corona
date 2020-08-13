@@ -1,6 +1,5 @@
 from typing import Dict, List, Optional, Union
 
-import faiss
 import spacy
 from nltk.tokenize import word_tokenize
 from tqdm.auto import tqdm
@@ -8,6 +7,15 @@ from tqdm.auto import tqdm
 from .dataset import CORD19Dataset
 from .datatypes import Papers
 from .utils import clean_punctuation, normalize_whitespace
+
+
+for libname in ["faiss"]:
+    try:
+        lib = __import__(libname)
+    except ModuleNotFoundError:
+        print(sys.exc_info())
+    else:
+        globals()[libname] = lib
 
 
 def frequency_summarizer(text: Union[str, List[str]],
@@ -149,7 +157,8 @@ def extract_titles(cord19: CORD19Dataset,
 
 
 def tune_ids_to_tasks(
-        tasks: Union[List[str], List[List[str]]],
+        tasks: Union[Dict[str, List[str]], List[Dict[str, List[str]]],
+                     List[str], List[List[str]]],
         encoder: 'SentenceTransformer',
         minlen: Optional[int] = 10,
         n_size: Optional[int] = -1,
@@ -182,14 +191,34 @@ def tune_ids_to_tasks(
     param: show_progress (bool):
         Whether to display the progress of encoding.
     """
-    if not isinstance(tasks[0], list):
+    if isinstance(tasks, dict) or isinstance(tasks[0], str):
         tasks = [tasks]
+    if isinstance(tasks[0], dict):
+        tasks_ = []
+        for i in range(len(tasks)):
+            if "tasks" not in tasks[i]:
+                raise ValueError("Missing key `<tasks>` in dictionary.")
+            else:
+                tasks_.append(tasks[i]["tasks"])
+        tasks = tasks_
+        del tasks_
+    if isinstance(tasks[0], list) and isinstance(tasks[0][0], str):
+        assert sum([len(n) for n in tasks]) > 1, \
+            "Total number of string sequences (tasks) < 1."
+    else:
+        raise ValueError(
+            "Expected a single or iterable of task(s) with type "
+            f"Dict[str, List[str]] | List[str] got, {type(tasks[0])}"
+        )
     if paper_titles is None:
         if cord19 is not None:
-            paper_titles = extract_titles(cord19, maxids=n_size, minlen=minlen)
+            paper_titles = extract_titles(
+                cord19, maxids=n_size, minlen=minlen)
         else:
-            raise Exception('Expected an ``CORD19Dataset`` instance or '
-                            'a Dict[int, str] ``paper_titles`` mapping.')
+            raise Exception(
+                'Expected an ``CORD19Dataset`` instance or '
+                'a Dict[int, str] ``paper_titles`` mapping.'
+            )
 
     titles = list(paper_titles.values())
     sample = list(paper_titles.keys())

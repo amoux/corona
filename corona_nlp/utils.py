@@ -2,7 +2,7 @@ import pickle
 import re
 from pathlib import Path
 from string import punctuation
-from typing import IO, Any, Dict, List, NamedTuple, Sequence, Tuple, Union
+from typing import IO, Any, Dict, List, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -11,15 +11,6 @@ from spacy import displacy
 
 from .indexing import PaperIndexer
 from .jsonformatter import generate_clean_df
-
-# NOTE: This needs to be removed.
-Cord19Paths = NamedTuple(
-    'Cord19Paths', [
-        ('readme', Path), ('metadata', Path), ('dirs', List[Path]),
-        ('pmc_custom_license', Path),
-        ('biorxiv_medrxiv', Path),
-        ('comm_use_subset', Path),
-        ('noncomm_use_subset', Path), ])
 
 
 def clean_punctuation(text: str) -> str:
@@ -93,38 +84,6 @@ class DataIO:
             return pickle.load(pkl)
 
 
-def load_dataset_paths(basedir: str) -> Cord19Paths:
-    """Return an organized representation of all paths in the dataset.
-
-    ```python
-    basedir = "path/to/CORD-19-research-challenge/2020-03-13/"
-    load_dataset_paths(basedir)._fields
-    ...
-        ('readme', 'metadata', 'dirs',
-        'pmc_custom_license',
-        'biorxiv_medrxiv',
-        'comm_use_subset',
-        'noncomm_use_subset')
-    ```
-    """
-    basedir = Path(basedir)
-    paths, filesdir = {}, []
-    for p in basedir.iterdir():
-        if p.suffix == '.csv':
-            paths['metadata'] = p
-        elif p.suffix == '.readme':
-            paths['readme'] = p
-        elif p.is_dir():
-            dirdir = p.joinpath(p.name)
-            if dirdir.is_dir():
-                filesdir.append(dirdir)
-
-    paths['dirs'] = filesdir
-    for p in filesdir:
-        paths[p.name] = p
-    return Cord19Paths(**paths)
-
-
 def render(question: str, prediction: Dict[str, str], jupyter=True,
            return_html=False, style="ent", manual=True, label='ANSWER'):
     """Spacy displaCy visualization util for the question answering model."""
@@ -151,59 +110,46 @@ def render(question: str, prediction: Dict[str, str], jupyter=True,
                         jupyter=jupyter, options=options, manual=manual)
 
 
-def papers_to_csv(sources: Union[str, Cord19Paths],
-                  dirs: Tuple[Sequence[str]] = ('all',),
-                  out_dir='data') -> None:
+def papers_to_csv(sources: Union[str, Path, List[Union[str, Path]]],
+                  out_dir: str = "data") -> None:
     """Convert one or more directories with json files into a csv file(s).
 
-    `sources`: Path to the `CORD-19-research-challenge/2020-03-13/` dataset
-        directory, or an instance of `Cord19Paths`.
-
-    `dirs`: Use `all` for all available directories or a sequence of the names.
-        You can pass the full name or the first three characters e.g., `('pmc
-        ', 'bio', 'com', 'non')`
-
-    `out_dir`: Directory where the csv files will be saved.
+    :param sources: Path or iterable of paths to the root directory of
+        the CORD19 Dataset e.g., `CORD-19-research-challenge/2020-03-13/`.
     """
-    if isinstance(sources, str):
-        if not Path(sources).exists():
-            raise ValueError("Invalid path, got {sources}")
-        sources = load_dataset_paths(sources)
-    assert isinstance(sources, Cord19Paths)
+    def sample(i: int, splits: List[int], index_start: int) -> List[int]:
+        if i == 0:
+            return list(range(index_start, splits[i] + 1))
+        if i > 0:
+            return list(range(splits[i - 1] + 1, splits[i] + 1))
 
-    out_dir = Path(out_dir)
+    out_dir = Path(out_dir) if not isinstance(out_dir, Path) else out_dir
     if not out_dir.is_dir():
         out_dir.mkdir(parents=True)
 
-    metadata = pd.read_csv(sources.metadata)
-    has_full_text = metadata.loc[metadata["has_full_text"] == True, ["sha"]]
-    has_full_text = list(set(has_full_text["sha"].to_list()))
+    indexer = PaperIndexer(sources)
+    index_start = indexer.index_start
+    splits = indexer._splits
+    for i in range(len(splits)):
+        try:
+            ids = sample(i, splits, index_start)
+            papers = indexer.load_papers(ids)
+        except Exception as err:
+            raise Exception(
+                f"{indexer.source_name[i]} generated an exception; {err}"
+            )
+        else:
+            df = generate_clean_df(papers)
+            df.drop_duplicates(subset=["paper_ids"], inplace=True)
+            df.dropna(inplace=True)
 
-    def with_full_text(index: PaperIndexer) -> List[int]:
-        # filter only paper-id's if full-text is available in the metadata
-        indices = []
-        for paper_id in has_full_text:
-            if paper_id in index.paper_index:
-                paper_id = index[paper_id]
-                if paper_id in indices:
-                    continue
-                indices.append(paper_id)
-        return indices
+            file_name = f"{indexer.source_name[i]}_{splits[i]}_papers.csv"
+            file_path = out_dir.joinpath(file_name)
+            df.to_csv(file_path, index=False)
 
-    if len(dirs) == 4 or 'all' in dirs:
-        sources = sources.dirs
-    else:
-        sources = [d for d in sources.dirs if d.name[:3] in dirs]
-
-    for path in sources:
-        index = PaperIndexer(path)
-        papers = index.load_papers(with_full_text(index))
-        df = generate_clean_df(papers)
-
-        filepath = out_dir.joinpath(f"{index.source_name}.csv")
-        df.to_csv(filepath, index=False)
-        print("All {} files from directory {} saved in: {}".format(
-            index.num_papers, index.source_name, filepath))
+            print("All {} files from directory {} saved in: {}".format(
+                splits[i], indexer.source_name[i], file_path)
+            )
 
 
 def concat_csv_files(source_dir: str,
