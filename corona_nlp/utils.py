@@ -2,7 +2,7 @@ import pickle
 import re
 from pathlib import Path
 from string import punctuation
-from typing import IO, Any, Dict, List, Tuple, Union
+from typing import IO, Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -84,32 +84,6 @@ class DataIO:
             return pickle.load(pkl)
 
 
-def render(question: str, prediction: Dict[str, str], jupyter=True,
-           return_html=False, style="ent", manual=True, label='ANSWER'):
-    """Spacy displaCy visualization util for the question answering model."""
-    options = {"compact": True, "bg": "#ed7118", "color": '#000000'}
-    display_data = {}
-    start, end = 0, 0
-    match = re.search(prediction["answer"], prediction["context"])
-    if match and match.span() is not None:
-        start, end = match.span()
-
-    display_data["ents"] = [{'start': start, 'end': end, 'label': label}]
-    options['ents'] = [label]
-    options['colors'] = {label: "linear-gradient(90deg, #aa9cfc, #fc9ce7)"}
-    if len(prediction['context']) > 1:
-        display_data['text'] = prediction['context']
-
-    display_data['title'] = f'Q : {question}\n'
-    if return_html:
-        return displacy.render([display_data], style=style,
-                               jupyter=False, options=options, manual=manual)
-    else:
-        displacy.render([display_data], style=style,
-                        page=False, minify=True,
-                        jupyter=jupyter, options=options, manual=manual)
-
-
 def papers_to_csv(sources: Union[str, Path, List[Union[str, Path]]],
                   out_dir: str = "data") -> None:
     """Convert one or more directories with json files into a csv file(s).
@@ -180,3 +154,47 @@ def concat_csv_files(source_dir: str,
         master_df.to_csv(file_path, index=False)
     else:
         return master_df
+
+
+def render_output(
+    output: Optional[Dict[str, str]] = None,
+    answer: Optional[str] = None,
+    context: Optional[str] = None,
+    question: Optional[str] = None,
+    span: Optional[Tuple[int, int]] = None,
+    style: str = "ent",
+    label: str = 'ANSWER',
+    label_gradient: Sequence[str] = ["90deg", "#aa9cfc", "#fc9ce7"],
+    manual: bool = True,
+    jupyter: bool = True,
+    return_html: bool = False,
+):
+    """Spacy displaCy visualization util for the question answering model."""
+    if output is not None and isinstance(output, dict):
+        answer = output["answer"]
+        context = output["context"]
+
+    start, end = span if span is not None else (0, 0)
+    if span is None:
+        match = re.search(answer, context)
+        if match and match.span() is not None:
+            start, end = match.span()
+
+    data = {}
+    data["ents"] = [dict(start=start, end=end, label=label.strip())]
+    if len(context.strip()) > 1:
+        data['text'] = context
+    if question is not None and isinstance(question, str):
+        data['title'] = f'Question: {question.strip()}\n'
+
+    options = dict(compact=True, bg="#ed7118", color="#000000")
+    colors = "linear-gradient({})".format(", ".join(label_gradient))
+    options['colors'] = dict(label=colors)
+    options['ents'] = [label.strip()]
+
+    if return_html:
+        return displacy.render([data], style=style, jupyter=False,
+                               options=options, manual=manual)
+
+    displacy.render([data], style=style, page=False, minify=True,
+                    jupyter=jupyter, options=options, manual=manual)

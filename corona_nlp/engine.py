@@ -1,4 +1,5 @@
-from typing import Any, Dict, List, Tuple, Union
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import faiss
 import numpy as np
@@ -9,27 +10,45 @@ from transformers import BertForQuestionAnswering
 from .dataset import CORD19Dataset
 from .datatypes import Papers
 from .retrival import frequency_summarizer
+from .tokenizer import SpacySentenceTokenizer
 from .transformer import BertSummarizer, SentenceTransformer
 from .utils import clean_tokenization, normalize_whitespace
 
 
-class QAEngine(CORD19Dataset):
+class QuestionAnsweringEngine:
     nprobe_list = [1, 4, 16, 64, 256]
 
-    def __init__(self, source: Union[str, List[str]], papers: str, index: str,
-                 encoder: str, model: str, model_device='cpu', **kwargs):
-        super(QAEngine, self).__init__(source, **kwargs)
-        self.papers = Papers.from_disk(papers)
-        self.index = faiss.read_index(index)
-        self.encoder = SentenceTransformer(encoder)
+    def __init__(
+            self,
+            papers: Union[str, Path, Papers],
+            index: Union[str, faiss.IndexIVFFlat],
+            encoder: Union[str, Path, SentenceTransformer],
+            cord19: Optional[CORD19Dataset] = None,
+            model_name: str = "amoux/scibert_nli_squad",
+            spacy_nlp: str = "en_core_web_sm",
+            model_device: str = "cpu",
+            **kwargs,
+    ) -> None:
+        if cord19 is None:
+            cord19 = CORD19Dataset(**kwargs)
+        if cord19 is not None:
+            for name, attr in cord19.__dict__.items():
+                setattr(self, name, attr)
+        self.papers = papers if isinstance(papers, Papers) \
+            else Papers.from_disk(papers)
+        self.index = index if isinstance(index, faiss.IndexIVFFlat) \
+            else faiss.read_index(index)
+        self.encoder = encoder if isinstance(encoder, SentenceTransformer) \
+            else SentenceTransformer(encoder)
         self.tokenizer = self.encoder.tokenizer
-        self.model = BertForQuestionAnswering.from_pretrained(model)
-        if model_device == 'cuda':
+        self.model = BertForQuestionAnswering.from_pretrained(model_name)
+        if model_device == "cuda":
             # The encoder automatically sets to CUDA if available.
             self.model = self.model.to(self.encoder.device)
-        self.nlp = self.sentence_tokenizer.nlp()
+        self.nlp = self.sentence_tokenizer.nlp() if cord19 is not None \
+            else SpacySentenceTokenizer(spacy_nlp).nlp()
         self._freq_summarizer = frequency_summarizer
-        self._bert_summarizer = BertSummarizer.load(model, self.tokenizer)
+        self._bert_summarizer = BertSummarizer.load(model_name, self.tokenizer)
 
     @property
     def max_num_sents(self) -> int:
@@ -61,7 +80,8 @@ class QAEngine(CORD19Dataset):
         self.index.nprobe = nprobe
         return self.index.search(embed, k)
 
-    def decode(self, question: str, context: str) -> Tuple[str, str]:
+    def decode(self, question: str,
+               context: str) -> Tuple[str, str, Tuple[int, int]]:
         inputs = self.tokenizer.encode_plus(text=question.strip(),
                                             text_pair=context,
                                             add_special_tokens=True,
@@ -80,7 +100,8 @@ class QAEngine(CORD19Dataset):
             context = self.tokenizer.decode(input_ids[0],
                                             skip_special_tokens=True,
                                             clean_up_tokenization_spaces=True)
-        return answer, context
+        span = tuple((start, end))
+        return answer, context, span
 
     def answer(self, question: str, k=15,
                nprobe=1, mode: str = None) -> Dict[str, Any]:
@@ -112,9 +133,9 @@ class QAEngine(CORD19Dataset):
             context = self.compress(context, mode=mode)
         context = normalize_whitespace(context)
 
-        answer, context = self.decode(question, context)
+        answer, context, span = self.decode(question, context)
         context = clean_tokenization(context)
         dists, indices = dists.tolist()[0], indices.tolist()[0]
 
-        return {'answer': answer,
-                'context': context, 'dist': dists, 'ids': indices}
+        return {'answer': answer, 'context': context,
+                'dist': dists, 'ids': indices, 'span': span}

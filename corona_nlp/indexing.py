@@ -153,3 +153,27 @@ class PaperIndexer:
     def __repr__(self):
         return "PaperIndexer(papers={}, files_sorted={}, source={})".format(
             self.num_papers, self.is_files_sorted, self.source_name)
+
+
+def fit_index_ivf_hnsw(
+    embedding: np.array,
+    metric: Union[str, int, "faiss.METRIC"] = "l2",
+    m: int = 32,
+) -> "faiss.IndexIVFFlat":
+    import faiss
+    if isinstance(metric, str):
+        if metric.lower().strip() == "l1":
+            metric = faiss.METRIC_L1
+        elif metric.lower().strip() == "l2":
+            metric = faiss.METRIC_L2
+    assert isinstance(metric, int)
+
+    n, d = embedding.shape
+    nlist = int(np.sqrt(n))
+    quantizer = faiss.IndexHNSWFlat(d, m)
+    index_ivf = faiss.IndexIVFFlat(quantizer, d, nlist, metric)
+    index_ivf.verbose = True
+    index_ivf.train(embedding)
+    index_ivf.add(embedding)
+    assert index_ivf.ntotal == embedding.shape[0]
+    return index_ivf
