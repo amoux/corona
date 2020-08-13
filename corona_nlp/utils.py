@@ -140,7 +140,7 @@ def papers_to_csv(sources: Union[str, Path, List[Union[str, Path]]],
             )
         else:
             df = generate_clean_df(papers)
-            df.drop_duplicates(subset=["paper_ids"], inplace=True)
+            df.drop_duplicates(subset=["paper_id"], inplace=True)
             df.dropna(inplace=True)
 
             file_name = f"{indexer.source_name[i]}_{splits[i]}_papers.csv"
