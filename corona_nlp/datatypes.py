@@ -79,9 +79,10 @@ class Papers:
         """
         setattr(self, 'init_args', dict(
             source=cord19.paths,
-            index_start=cord19.is_files_sorted,
-            nlp_model=cord19.sentence_tokenizer.nlp_model,
             text_keys=cord19.text_keys,
+            index_stat=cord19.index_start,
+            sort_first=cord19.is_files_sorted,
+            nlp_model=cord19.sentence_tokenizer.nlp_model,
         ))
 
     def init_cord19_dataset(self) -> 'CORD19Dataset':
