@@ -163,13 +163,27 @@ def render_output(
     question: Optional[str] = None,
     span: Optional[Tuple[int, int]] = None,
     style: str = "ent",
-    label: str = 'ANSWER',
-    label_gradient: Sequence[str] = ["90deg", "#aa9cfc", "#fc9ce7"],
     manual: bool = True,
     jupyter: bool = True,
     return_html: bool = False,
+    label: str = 'ANSWER',
+    title: str = 'Question',
+    gradient: Sequence[str] = ["90deg", "#aa9cfc", "#fc9ce7"],
+    manual_data: Optional[Dict[str, Any]] = None,
+    options: Optional[Dict[str, Any]] = None,
 ):
-    """Spacy displaCy visualization util for the question answering model."""
+    """A displaCy visualizer for QA outputs.
+
+    :param output: The output dictionary of the QuestionAnswering model.
+    :param answer: Optional, the string answer of the model.
+    :param context: Optional, the string context of the model.
+    :param span: Span for highlighting the answer within the context. If
+        None, its detected automatically.
+    :param options: Visualizer options; visit the link for official DOCS:
+        https://spacy.io/api/top-level#displacy_options
+    :param manual_data: Defaults to ENT, keys; `'text', 'ents', 'titles'`
+        DOCS: https://spacy.io/usage/visualizers#manual-usage
+    """
     if output is not None and isinstance(output, dict):
         answer = output["answer"]
         context = output["context"]
@@ -180,21 +194,26 @@ def render_output(
         if match and match.span() is not None:
             start, end = match.span()
 
-    data = {}
-    data["ents"] = [dict(start=start, end=end, label=label.strip())]
-    if len(context.strip()) > 1:
-        data['text'] = context
-    if question is not None and isinstance(question, str):
-        data['title'] = f'Question: {question.strip()}\n'
+    docs = dict() if manual_data is None else manual_data
+    if manual_data is None:
+        if style == "ent":
+            docs["ents"] = [dict(start=start, end=end, label=label)]
+            if len(context.strip()) > 1:
+                docs['text'] = context
+            if question is not None:
+                docs['title'] = f"\n{title}: {question}\n"
 
-    options = dict(compact=True, bg="#ed7118", color="#000000")
-    colors = "linear-gradient({})".format(", ".join(label_gradient))
-    options['colors'] = dict(label=colors)
-    options['ents'] = [label.strip()]
+    if options is None:
+        if style == "dep":
+            options = dict(compact=True, bg="#ed7118", color="#000000")
+        else:
+            options = dict(ents=None, colors=None)
+            colors = "linear-gradient({})".format(", ".format(gradient))
+            options.update({'ents': [label], 'colors': {label: colors}})
 
     if return_html:
-        return displacy.render([data], style=style, jupyter=False,
+        return displacy.render([docs], style=style, jupyter=False,
                                options=options, manual=manual)
 
-    displacy.render([data], style=style, page=False, minify=True,
+    displacy.render([docs], style=style, page=False, minify=True,
                     jupyter=jupyter, options=options, manual=manual)

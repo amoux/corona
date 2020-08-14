@@ -1,3 +1,5 @@
+import concurrent.futures
+from multiprocessing import cpu_count
 from typing import Dict, List, Optional, Union
 
 import spacy
@@ -7,7 +9,6 @@ from tqdm.auto import tqdm
 from .dataset import CORD19Dataset
 from .datatypes import Papers
 from .utils import clean_punctuation, normalize_whitespace
-
 
 for libname in ["faiss"]:
     try:
@@ -123,37 +124,86 @@ def extract_questions(papers: Papers, min_length=30, sentence_ids=False):
     return questions, ids
 
 
-def extract_titles(cord19: CORD19Dataset,
-                   sample: Optional[List[int]] = None,
-                   maxids: int = -1,
-                   minlen: int = 10) -> Dict[int, str]:
-    """Extract titles from the CORD19 dataset.
+def extract_titles_slow(sample: List[int],
+                        minlen: int = 10,
+                        cord19: CORD19Dataset = None,
+                        show_progress: bool = False) -> Dict[int, str]:
+    """Extract titles from the CORD-19-Dataset (Slow).
 
-    param: sample: (optional) An existing list of integer ids (paper indices).
+    :param sample: (optional) An existing list of integer ids (paper indices).
         Otherwise if None; ids extracted from the `COR19Dataset` instance.
-    param: maxids: Number of ids to slice, if `-1` then all ids are used.
-    param: minlen: Minimum title string length (filtered without punctuation).
+    :param minlen: Minimum title string length (filtered without punctuation).
+    :param maxids: Number of ids to slice, if `-1` then all ids are used.
 
     Returns Dict[int, str] a dict of mapped paper indices to titles.
     """
-    mapped_titles = {}
+    if show_progress:
+        sample = tqdm(sample, desc="titles")
+
+    mapped = {}
+    for index in sample:
+        title = cord19.title(index)
+        title = normalize_whitespace(title)
+        if len(clean_punctuation(title)) <= minlen:
+            continue
+        if index not in mapped:
+            mapped[index] = title
+
+    return mapped
+
+
+def extract_titles_fast(sample: Optional[List[int]] = None,
+                        minlen: int = 10,
+                        cord19: CORD19Dataset = None,
+                        maxids: int = -1) -> Dict[int, str]:
+    """Extract titles from the CORD-19-Dataset (Fast).
+
+    :param sample: (optional) An existing list of integer ids (paper indices).
+        Otherwise if None; ids extracted from the `COR19Dataset` instance.
+    :param minlen: Minimum title string length (filtered without punctuation).
+    :param maxids: Number of ids to slice, if `-1` then all ids are used.
+
+    Returns Dict[int, str] a dict of mapped paper indices to titles.
+    """
     if sample is None:
         sample = cord19.sample(-1)
     else:
         assert isinstance(sample, list)
         assert isinstance(sample[0], int)
-
     if maxids > -1:
         sample = sample[:maxids]
 
-    for pid in tqdm(sample, desc='titles'):
-        title = normalize_whitespace(cord19.title(pid))
-        if len(clean_punctuation(title)) <= minlen:
-            continue
-        if pid not in mapped_titles:
-            mapped_titles[pid] = title
+    jobs = []
+    maxsize = len(sample)
+    workers = cpu_count()
+    for i in range(0, maxsize, workers):
+        job_ids = sample[i: min(i + workers, maxsize)]
+        jobs.append(job_ids)
 
-    return mapped_titles
+    with tqdm(total=maxsize, desc="titles") as pbar:
+        batch = {}
+        with concurrent.futures.ThreadPoolExecutor(workers) as pool:
+            future_to_ids = {
+                pool.submit(extract_titles_slow, job, **dict(
+                    minlen=minlen, cord19=cord19)): job for job in jobs}
+            for future in concurrent.futures.as_completed(future_to_ids):
+                ids = future_to_ids[future]
+                try:
+                    mapped = future.result()
+                except Exception as err:
+                    print(f"{ids} generated an exception; {err}")
+                    break
+                else:
+                    batch.update(mapped)
+                    pbar.update(len(ids))
+
+    mapping = {}  # Sort the dictionary from keys (paper_ids).
+    indices = iter(sorted(batch.keys()))
+    for index in indices:
+        title = batch[index]
+        mapping[index] = title
+
+    return mapping
 
 
 def tune_ids_to_tasks(
@@ -161,9 +211,9 @@ def tune_ids_to_tasks(
                      List[str], List[List[str]]],
         encoder: 'SentenceTransformer',
         minlen: Optional[int] = 10,
-        n_size: Optional[int] = -1,
+        maxids: Optional[int] = -1,
         cord19: Optional[CORD19Dataset] = None,
-        paper_titles: Optional[Dict[int, str]] = None,
+        ids_titles: Optional[Dict[int, str]] = None,
         target_size: Optional[int] = None,
         k_nn: Optional[int] = None,
         show_progress: bool = False) -> Union[List[int], List[List[int]]]:
@@ -174,11 +224,11 @@ def tune_ids_to_tasks(
         sequences. Tasks are expected to be in form of text queries.
         Multiple tasks available in the `cord_nlp.tasks` module.
     param: minlen (Optional, int):
-        Minimum title length, ignored if paper_titles is not None.
-    param: n_size (Optional, int):
-        Sample size for obtaining the titles, ignored if paper_titles
+        Minimum title length, ignored if ids_titles is not None.
+    param: maxids (Optional, int):
+        Sample size for obtaining the titles, ignored if ids_titles
         is not None.
-    param: paper_titles (Optional, Dict[int, str]):
+    param: ids_titles (Optional, Dict[int, str]):
         A mapping of paper ids to its titles. If None, then a
         ``CORD19Dataset`` instance is expected.
     param: target_size (Optional, int):
@@ -201,27 +251,25 @@ def tune_ids_to_tasks(
             else:
                 tasks_.append(tasks[i]["tasks"])
         tasks = tasks_
-        del tasks_
+
     if isinstance(tasks[0], list) and isinstance(tasks[0][0], str):
         assert sum([len(n) for n in tasks]) > 1, \
             "Total number of string sequences (tasks) < 1."
     else:
         raise ValueError(
             "Expected a single or iterable of task(s) with type "
-            f"Dict[str, List[str]] | List[str] got, {type(tasks[0])}"
-        )
-    if paper_titles is None:
-        if cord19 is not None:
-            paper_titles = extract_titles(
-                cord19, maxids=n_size, minlen=minlen)
-        else:
-            raise Exception(
-                'Expected an ``CORD19Dataset`` instance or '
-                'a Dict[int, str] ``paper_titles`` mapping.'
-            )
+            f"Dict[str, List[str]] | List[str] got, {type(tasks[0])}")
 
-    titles = list(paper_titles.values())
-    sample = list(paper_titles.keys())
+    if ids_titles is None:
+        if cord19 is not None:
+            ids_titles = extract_titles_fast(
+                sample=None, minlen=minlen, cord19=cord19, maxids=maxids)
+        else:
+            raise Exception('Expected an ``CORD19Dataset`` instance or '
+                            'a Dict[int, str] ``ids_titles`` mapping.')
+
+    titles = list(ids_titles.values())
+    sample = list(ids_titles.keys())
     decode = dict(enumerate(sample))
 
     k_iter = []

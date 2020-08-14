@@ -1,8 +1,8 @@
 from .dataset import CORD19Dataset
 from .datatypes import Papers, Sentences, merge_papers
 from .indexing import PaperIndexer, Path
-from .retrival import (common_tokens, extract_questions, extract_titles,
-                       frequency_summarizer)
+from .retrival import (common_tokens, extract_questions, extract_titles_fast,
+                       extract_titles_slow, frequency_summarizer)
 from .tasks import *
 from .tokenizer import SpacySentenceTokenizer
 from .transformer import BertSummarizer, SentenceTransformer

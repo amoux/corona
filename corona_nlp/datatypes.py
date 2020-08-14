@@ -70,6 +70,29 @@ class Papers:
         """Load the state from a directory."""
         return DataIO.load_data(path)
 
+    def attach_init_args(self, cord19: 'CORD19Dataset') -> None:
+        """Attach the initialization **kwargs used in CORD19Dataset.__init__.
+
+        * An attribute `init_args` of type `Dict[str, Any]` added with the
+        initialization keyword arguments, which can later be used to load
+        the state of parameters responsible for the origin of this "self".
+        """
+        setattr(self, 'init_args', dict(
+            source=cord19.paths,
+            index_start=cord19.is_files_sorted,
+            nlp_model=cord19.sentence_tokenizer.nlp_model,
+            text_keys=cord19.text_keys,
+        ))
+
+    def init_cord19_dataset(self) -> 'CORD19Dataset':
+        if not hasattr(self, 'init_args'):
+            raise AttributeError(
+                "Current `self` was not saved w/or self.attach_init_args() "
+                "hasn't been called to attach `init_args` attr this `self`."
+            )
+        from .dataset import CORD19Dataset
+        return CORD19Dataset(**self.init_args)
+
     def __len__(self):
         return self.num_sents
 
