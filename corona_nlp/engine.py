@@ -25,17 +25,24 @@ class QuestionAnsweringEngine:
             encoder: Union[str, Path, SentenceTransformer],
             cord19: Optional[CORD19Dataset] = None,
             model_name: str = "amoux/scibert_nli_squad",
-            spacy_nlp: str = "en_core_web_sm",
+            nlp_model: str = "en_core_web_sm",
             model_device: str = "cpu",
             **kwargs,
     ) -> None:
+        self.papers = papers if isinstance(papers, Papers) \
+            else Papers.from_disk(papers)
         if cord19 is None:
-            cord19 = CORD19Dataset(**kwargs)
+            if hasattr(self.papers, "init_args"):
+                cord19 = self.papers.init_cord19_dataset()
+            else:
+                try:
+                    cord19 = CORD19Dataset(**kwargs)
+                except Exception:
+                    pass
         if cord19 is not None:
             for name, attr in cord19.__dict__.items():
                 setattr(self, name, attr)
-        self.papers = papers if isinstance(papers, Papers) \
-            else Papers.from_disk(papers)
+
         self.index = index if isinstance(index, faiss.IndexIVFFlat) \
             else faiss.read_index(index)
         self.encoder = encoder if isinstance(encoder, SentenceTransformer) \
@@ -43,10 +50,9 @@ class QuestionAnsweringEngine:
         self.tokenizer = self.encoder.tokenizer
         self.model = BertForQuestionAnswering.from_pretrained(model_name)
         if model_device == "cuda":
-            # The encoder automatically sets to CUDA if available.
             self.model = self.model.to(self.encoder.device)
         self.nlp = self.sentence_tokenizer.nlp() if cord19 is not None \
-            else SpacySentenceTokenizer(spacy_nlp).nlp()
+            else SpacySentenceTokenizer(nlp_model).nlp()
         self._freq_summarizer = frequency_summarizer
         self._bert_summarizer = BertSummarizer.load(model_name, self.tokenizer)
 

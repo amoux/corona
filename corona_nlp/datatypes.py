@@ -80,7 +80,7 @@ class Papers:
         setattr(self, 'init_args', dict(
             source=cord19.paths,
             text_keys=cord19.text_keys,
-            index_stat=cord19.index_start,
+            index_start=cord19.index_start,
             sort_first=cord19.is_files_sorted,
             nlp_model=cord19.sentence_tokenizer.nlp_model,
         ))

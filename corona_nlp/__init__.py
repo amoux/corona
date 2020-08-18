@@ -1,3 +1,4 @@
+import sys
 from .dataset import CORD19Dataset
 from .datatypes import Papers, Sentences, merge_papers
 from .indexing import PaperIndexer, Path

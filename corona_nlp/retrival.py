@@ -1,3 +1,4 @@
+import sys
 import concurrent.futures
 from multiprocessing import cpu_count
 from typing import Dict, List, Optional, Union
@@ -10,13 +11,12 @@ from .dataset import CORD19Dataset
 from .datatypes import Papers
 from .utils import clean_punctuation, normalize_whitespace
 
-for libname in ["faiss"]:
-    try:
-        lib = __import__(libname)
-    except ModuleNotFoundError:
-        print(sys.exc_info())
-    else:
-        globals()[libname] = lib
+try:
+    _faiss_lib = __import__("faiss")
+except ModuleNotFoundError:
+    print(sys.exc_info())
+else:
+    globals()["faiss"] = _faiss_lib
 
 
 def frequency_summarizer(text: Union[str, List[str]],

@@ -125,7 +125,9 @@ class CORD19Dataset(PaperIndexer):
                         batch_.append(papers)
                         pbar.update(len(ids))
 
-        return merge_papers(batch_)
+        papers = merge_papers(batch_)
+        papers.attach_init_args(self)
+        return papers
 
     def __repr__(self):
         return "CORD19Dataset(papers={}, files_sorted={}, source={})".format(
