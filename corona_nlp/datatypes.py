@@ -1,5 +1,6 @@
+import collections
 from dataclasses import dataclass, field
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Union
 
 from .utils import DataIO
 
@@ -48,14 +49,55 @@ class Papers:
         """
         return self[sent_id]
 
-    def lookup(self, sent_ids: List[int]) -> List[Dict[str, int]]:
-        locs = []
-        for i in sent_ids:
-            node, item = self._meta[i]
-            locs.append({"sent_id": i,
-                         "paper_id": node,
-                         "loc": (node, item)})
-        return locs
+    def largest(self, topk: int = 10) -> List[Tuple[int, int]]:
+        """Return an iterable of paper ids and their number of sentences
+        for that paper id; from biggest to the smallest.
+        """
+        count = collections.Counter([m[0] for m in self._meta])
+        if topk == -1:
+            return count.most_common()
+        else:
+            return count.most_common(topk)
+
+    def lookup(self, sent_ids: Union[int, List[int]], mode="inline"):
+        """Lookup paper-ids by a single or list of sentence ids.
+
+        :param mode: Data format. `inline` has index keys: `pid, sid, loc`
+         and `table` has paper-ids as keys and sentence-ids as values.
+        - modes:
+          - `inline`: List[Dict[str, Union[int, Tuple[int, int]]]]
+          - `table` : Dict[int, List[int]]
+        """
+        is_single_input = False
+        if isinstance(sent_ids, int):
+            sent_ids = [sent_ids]
+            is_single_input = True
+
+        inline: List[Dict[str, Union[int, Tuple[int, int]]]] = None
+        table: Dict[int, List[int]] = None
+        if mode == "inline":
+            inline = []
+        else:
+            table = {}
+        for sent_id in sent_ids:
+            pid, item = self._meta[sent_id]
+            if table is None:
+                inline.append({
+                    "pid": pid,
+                    "sid": sent_id,
+                    "loc": (pid, item),
+                })
+            elif inline is None:
+                if pid not in table:
+                    table[pid] = [sent_id]
+                else:
+                    table[pid].append(sent_id)
+        if table is None:
+            if is_single_input:
+                return inline[0]
+            return inline
+        else:
+            return table
 
     def sents(self, paper_id: int) -> List[str]:
         """Retrive all sentences belonging to the given paper ID."""
