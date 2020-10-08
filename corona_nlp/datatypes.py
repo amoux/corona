@@ -108,7 +108,7 @@ class Papers:
         DataIO.save_data(path, self)
 
     @staticmethod
-    def from_disk(path: str):
+    def from_disk(path: str) -> 'corona_nlp.Papers':
         """Load the state from a directory."""
         return DataIO.load_data(path)
 
@@ -127,7 +127,7 @@ class Papers:
             nlp_model=cord19.sentence_tokenizer.nlp_model,
         ))
 
-    def init_cord19_dataset(self) -> 'CORD19Dataset':
+    def init_cord19_dataset(self) -> 'corona_nlp.CORD19Dataset':
         if not hasattr(self, 'init_args'):
             raise AttributeError(
                 "Current `self` was not saved w/or self.attach_init_args() "
@@ -136,18 +136,22 @@ class Papers:
         from .dataset import CORD19Dataset
         return CORD19Dataset(**self.init_args)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return self.num_sents
 
-    def __getitem__(self, item):
+    def __contains__(self, item: int) -> bool:
+        if isinstance(item, int):
+            return item in self.cluster
+
+    def __getitem__(self, item: int) -> Union[str, List[str]]:
         if isinstance(item, slice):
             return [self.cluster[i[0]][i[1]] for i in self._meta[item]]
-        p_id, item = self._meta[item]
-        return self.cluster[p_id][item]
+        pid, item = self._meta[item]
+        return self.cluster[pid][item]
 
     def __iter__(self):
-        for p_id in self.cluster:
-            for sent in self.cluster[p_id]:
+        for pid in self.cluster:
+            for sent in self.cluster[pid]:
                 yield sent
 
 

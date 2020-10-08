@@ -4,14 +4,13 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import faiss
 import numpy as np
 import torch
-
 from transformers import BertForQuestionAnswering
 
 from .dataset import CORD19Dataset
 from .datatypes import Papers
-from .retrival import frequency_summarizer
+from .summarization import BertSummarizer, frequency_summarizer
 from .tokenizer import SpacySentenceTokenizer
-from .transformer import BertSummarizer, SentenceTransformer
+from .ukplab.sentence import SentenceTransformer
 from .utils import clean_tokenization, normalize_whitespace
 
 
@@ -128,7 +127,7 @@ class QuestionAnsweringEngine:
                         and not sent[-1].is_bracket
                         and not sent[-1].is_quote
                         and not sent[-1].is_stop
-                        and not sent[-1].is_punct):
+                            and not sent[-1].is_punct):
                         string = f'{string}.'
                 if string in sentences:
                     continue
