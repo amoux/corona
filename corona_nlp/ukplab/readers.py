@@ -1,10 +1,12 @@
+import csv
 import gzip
 import os
 from pathlib import Path
-from typing import Iterable, List, NamedTuple, Tuple, Union
+from typing import Any, Dict, Iterable, List, NamedTuple, Tuple, Union
 from urllib import request
 from zipfile import ZipFile
 
+import pandas as pd
 import torch
 from torch.utils.data import Dataset
 from transformers import AutoTokenizer
@@ -39,6 +41,24 @@ class Input(NamedTuple):
     @property
     def is_tokenized(self) -> bool:
         return 0 < len(self.token_ids)
+
+
+def load_sts(fp: str, norm=True, score_col=4, s1_col=5, s2_col=6):
+    with open(fp, encoding='utf-8') as file:
+        reader = csv.reader(file, delimiter='\t', quoting=csv.QUOTE_NONE)
+        data: Dict[str, List[Any]] = dict(score=[], s1=[], s2=[])
+        for row in reader:
+            score = float(row[score_col])
+            data['score'].append(score)
+            data['s1'].append(row[s1_col])
+            data['s2'].append(row[s2_col])
+
+    if norm:
+        scores = data['score']
+        maxscore = max(scores)
+        data['score'] = [k / maxscore for k in scores]
+
+    return pd.DataFrame(data)
 
 
 class NLIReader:

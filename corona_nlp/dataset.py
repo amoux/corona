@@ -1,7 +1,7 @@
 import concurrent.futures
 import random
 from multiprocessing import cpu_count
-from typing import Callable, Iterator, List, Tuple, Union
+from typing import Callable, Iterator, List, Optional, Tuple, Union
 
 from tqdm.auto import tqdm
 
@@ -15,11 +15,11 @@ class CORD19Dataset(PaperIndexer):
     def __init__(
             self,
             source: Union[str, List[str]],
-            text_keys: Tuple[str] = ("abstract", "body_text",),
+            text_keys: Tuple[str, ...] = ("abstract", "body_text",),
             index_start: int = 1,
             sort_first: bool = False,
             nlp_model: str = "en_core_web_sm",
-            sentence_tokenizer: Callable = None,
+            sentence_tokenizer=None,
     ):
         super(CORD19Dataset, self).__init__(source, index_start, sort_first)
         self.text_keys = text_keys
@@ -31,7 +31,9 @@ class CORD19Dataset(PaperIndexer):
         else:
             self.sentence_tokenizer = SpacySentenceTokenizer(nlp_model)
 
-    def sample(self, k: int = None, s: int = None, seed=None) -> List[int]:
+    def sample(
+        self, k: Optional[int] = None, s: Optional[int] = None, seed=None,
+    ) -> Union[List[int], None]:
         """Return a sample (all|random k) or split of paper ID's.
 
         :param k: number of ids to return from all samples, if `k=-1` then all
@@ -84,9 +86,14 @@ class CORD19Dataset(PaperIndexer):
         cluster = index.init_cluster()
         docs = self.docs(indices)
 
+        tokenize = self.sentence_tokenizer.tokenize
+        is_sentence = self.sentence_tokenizer.is_sentence
+
         for paper in cluster:
-            for line in self.sentence_tokenizer.tokenize(next(docs)):
-                string = normalize_whitespace(line.text)
+            for sent in tokenize(next(docs)):
+                if not is_sentence(sent):
+                    continue
+                string = normalize_whitespace(sent.text)
                 string = clean_tokenization(string)
                 length = len(string)
                 if length <= minlen:
@@ -130,5 +137,9 @@ class CORD19Dataset(PaperIndexer):
         return papers
 
     def __repr__(self):
-        return "CORD19Dataset(papers={}, files_sorted={}, source={})".format(
-            self.num_papers, self.is_files_sorted, self.source_name)
+        multi_src = "[\n  {},\n]"  # Template for a list of sources.
+        src = self.source_name if isinstance(self.source_name, str) \
+            else multi_src.format(', '.join(self.source_name))
+        return "{}(papers: {}, files_sorted: {}, source: {})".format(
+            self.__class__.__name__, self.num_papers, self.is_files_sorted, src,
+        )

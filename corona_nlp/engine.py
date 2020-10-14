@@ -19,9 +19,9 @@ class QuestionAnsweringEngine:
 
     def __init__(
             self,
-            papers: Union[str, Path, Papers],
-            index: Union[str, faiss.IndexIVFFlat],
-            encoder: Union[str, Path, SentenceTransformer],
+            papers: Union[Papers, str],
+            index: Union[faiss.IndexIVFFlat, str],
+            encoder: Union[SentenceTransformer, str],
             cord19: Optional[CORD19Dataset] = None,
             model_name: str = "amoux/scibert_nli_squad",
             nlp_model: str = "en_core_web_sm",
@@ -68,12 +68,13 @@ class QuestionAnsweringEngine:
         )
 
     def compress(self, sents: Union[str, List[str]], mode='bert') -> str:
+        sequence = ""
         if mode == 'freq':
-            return self._freq_summarizer(sents, nlp=self.nlp)
+            sequence = self._freq_summarizer(sents, nlp=self.nlp)
         elif mode == 'bert':
             if isinstance(sents, list):
-                sents = ' '.join(sents)
-            return self._bert_summarizer(sents)
+                sequence = self._bert_summarizer(' '.join(sents))
+        return sequence
 
     def encode(self, sents: List[str]) -> np.array:
         embedding = self.encoder.encode(sents, show_progress=False)

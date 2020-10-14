@@ -46,6 +46,14 @@ class SentenceTransformer(nn.Sequential):
         self.max_length = max_length
         self.do_lower_case = do_lower_case
 
+    @property
+    def word_dim(self) -> int:
+        return self._modules['0'].word_dim
+
+    @property
+    def sent_dim(self) -> int:
+        return self._modules['1'].sent_dim
+
     def encode(self, sentences: List[str], batch_size=9, show_progress=True):
         self.eval()
         lengths = np.argsort([len(sent) for sent in sentences])

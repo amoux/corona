@@ -1,5 +1,5 @@
 import functools
-from typing import List, Union
+from typing import List, NamedTuple, Optional
 
 import spacy
 from spacy.lang.en import English
@@ -7,20 +7,31 @@ from spacy.tokens.doc import Doc
 from spacy.tokens.span import Span
 
 
-class SpacySentenceTokenizer:
+class TextScore(NamedTuple):
+    word_ratio: float
+    char_ratio: float
+    num_tokens: int
 
+
+class SpacySentenceTokenizer:
     def __init__(
         self,
-        nlp_model="en_core_sci_sm",
-        disable=["ner", "tagger"],
-        max_length=2_000_000,
-    ):
+        nlp_model: str = "en_core_sci_sm",
+        word_ratio: float = 0.40,
+        char_ratio: float = 0.60,
+        min_tokens: int = 5,
+        disable: List[str] = ["ner", "tagger"],
+        max_length: int = 2_000_000,
+    ) -> None:
         """Spacy Sentence Tokenizer.
 
         :params nlp_model: spaCy model to use for the tokenizer.
         :params disable: name of spaCy's pipeline components to disable.
         """
         self.nlp_model = nlp_model
+        self.word_ratio = word_ratio
+        self.char_ratio = char_ratio
+        self.min_tokens = min_tokens
         self.disable = disable
         self.max_length = max_length
 
@@ -41,26 +52,27 @@ class SpacySentenceTokenizer:
         doc = self.nlp()(doc)
         return list(doc.sents)
 
-    def is_sentence(self, doc: Union[str, Doc],
-                    token_count=5, word_ratio=0.40, char_ratio=0.60) -> bool:
+    def score(self, doc: Doc) -> TextScore:
+        num_tokens = len(doc)
+        return TextScore(
+            word_ratio=sum([x.is_alpha for x in doc]) / num_tokens,
+            char_ratio=sum([x.isalpha() for x in doc.text]) / num_tokens,
+            num_tokens=num_tokens,
+        )
+
+    def is_sentence(self, doc: Optional[Doc] = None, k: Optional[TextScore] = None) -> bool:
         """Check whether a sequence is a valid english sentence."""
-        if not isinstance(doc, Doc) and isinstance(doc, str):
-            doc = self.nlp()(doc)
-
-        tokens = [token for token in doc.doc]
-        if len(tokens) < token_count:
+        k = k if k is not None else self.score(doc)
+        if k.num_tokens < self.min_tokens:
             return False
-
-        num_words = sum([token.is_alpha for token in tokens])
-        if num_words / len(tokens) < word_ratio:
+        if k.word_ratio < self.word_ratio:
             return False
-
-        num_chars = sum([char.isalpha() for char in doc.text])
-        if num_chars / len(tokens) < char_ratio:
+        if k.char_ratio < self.char_ratio:
             return False
-
         return True
 
     def __repr__(self):
-        model, pipe = self.nlp_model, self.disable
-        return f"<SpacySentenceTokenizer({model}, disable={pipe})>"
+        return "{}(model: {}, pipe: {}, word_ratio: {}, char_ratio: {})".format(
+            self.__class__.__name__, self.nlp_model,
+            tuple(self.disable), self.word_ratio, self.char_ratio
+        )

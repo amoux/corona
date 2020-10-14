@@ -1,6 +1,7 @@
 import collections
+import random
 from dataclasses import dataclass, field
-from typing import Dict, List, Tuple, Union
+from typing import Any, Counter, Dict, List, Optional, Tuple, TypeVar, Union
 
 from .utils import DataIO
 
@@ -12,7 +13,7 @@ class Sentences:
     maxlen: int = 0
     strlen: int = 0
 
-    def init_cluster(self) -> Dict[int, List[str]]:
+    def init_cluster(self) -> Dict[int, List[Any]]:
         return dict([(index, []) for index in self.indices])
 
     def __len__(self):
@@ -27,6 +28,9 @@ class Papers:
     num_papers: int = field(init=False)
     num_sents: int = field(init=False)
     _meta: List[Tuple[int, int]] = field(init=False, repr=False)
+    init_args: Optional[Dict[str, Any]] = field(
+        init=False, repr=False, default=None,
+    )
 
     def __post_init__(self):
         if isinstance(self.sentences, Sentences):
@@ -44,10 +48,10 @@ class Papers:
 
     def string(self, sent_id: int) -> str:
         """Retrive a single string from a sentence ID.
-
         * Same as `self[sent_id]`
         """
-        return self[sent_id]
+        pid, item = self._meta[sent_id]
+        return self.cluster[pid][item]
 
     def largest(self, topk: int = 10) -> List[Tuple[int, int]]:
         """Return an iterable of paper ids and their number of sentences
@@ -65,7 +69,7 @@ class Papers:
         :param mode: Data format. `inline` has index keys: `pid, sid, loc`
          and `table` has paper-ids as keys and sentence-ids as values.
         - modes:
-          - `inline`: List[Dict[str, Union[int, Tuple[int, int]]]]
+          - `inline`: List[Dict[str, Union[int, Tuple[int, ...]]]]
           - `table` : Dict[int, List[int]]
         """
         is_single_input = False
@@ -73,26 +77,28 @@ class Papers:
             sent_ids = [sent_ids]
             is_single_input = True
 
-        inline: List[Dict[str, Union[int, Tuple[int, int]]]] = None
-        table: Dict[int, List[int]] = None
+        inline: Optional[List[Dict[str, Union[int, Tuple[int, ...]]]]] = None
+        table: Optional[Dict[int, List[int]]] = None
         if mode == "inline":
             inline = []
         else:
             table = {}
+
         for sent_id in sent_ids:
             pid, item = self._meta[sent_id]
-            if table is None:
+            if inline is not None:
                 inline.append({
                     "pid": pid,
                     "sid": sent_id,
                     "loc": (pid, item),
                 })
-            elif inline is None:
+            elif table is not None:
                 if pid not in table:
                     table[pid] = [sent_id]
                 else:
                     table[pid].append(sent_id)
-        if table is None:
+
+        if inline is not None:
             if is_single_input:
                 return inline[0]
             return inline
@@ -108,33 +114,55 @@ class Papers:
         DataIO.save_data(path, self)
 
     @staticmethod
-    def from_disk(path: str) -> 'corona_nlp.Papers':
+    def from_disk(path: str) -> 'Papers':
         """Load the state from a directory."""
         return DataIO.load_data(path)
 
-    def attach_init_args(self, cord19: 'CORD19Dataset') -> None:
+    def attach_init_args(self, corona) -> None:
         """Attach the initialization **kwargs used in CORD19Dataset.__init__.
 
         * An attribute `init_args` of type `Dict[str, Any]` added with the
         initialization keyword arguments, which can later be used to load
         the state of parameters responsible for the origin of this "self".
         """
-        setattr(self, 'init_args', dict(
-            source=cord19.paths,
-            text_keys=cord19.text_keys,
-            index_start=cord19.index_start,
-            sort_first=cord19.is_files_sorted,
-            nlp_model=cord19.sentence_tokenizer.nlp_model,
-        ))
+        self.init_args = dict(
+            source=corona.paths,
+            text_keys=corona.text_keys,
+            index_start=corona.index_start,
+            sort_first=corona.is_files_sorted,
+            nlp_model=corona.sentence_tokenizer.nlp_model,
+        )
 
-    def init_cord19_dataset(self) -> 'corona_nlp.CORD19Dataset':
-        if not hasattr(self, 'init_args'):
+    def init_cord19_dataset(self):
+        if not hasattr(self, 'init_args') or self.init_args is None:
             raise AttributeError(
                 "Current `self` was not saved w/or self.attach_init_args() "
                 "hasn't been called to attach `init_args` attr this `self`."
             )
         from .dataset import CORD19Dataset
         return CORD19Dataset(**self.init_args)
+
+    def index_select(self, ids, reverse=False, shuffle=False) -> 'Papers':
+        if hasattr(ids, 'sample'):
+            ids = list(ids.sample())
+
+        child_ids = [pid for pid, _ in Counter(ids).most_common()]
+        if reverse:
+            child_ids.sort(reverse=True)
+        elif shuffle:
+            random.shuffle(child_ids)
+
+        select = Sentences(child_ids)
+        children = select.init_cluster()
+        for parent in select.indices:
+            for sentence in self.cluster[parent]:
+                strlen = len(sentence)
+                select.strlen += strlen
+                select.counts += 1
+                select.maxlen = max(select.maxlen, strlen)
+            children[parent] = self.cluster[parent]
+
+        return Papers(select, children)
 
     def __len__(self) -> int:
         return self.num_sents
@@ -143,11 +171,11 @@ class Papers:
         if isinstance(item, int):
             return item in self.cluster
 
-    def __getitem__(self, item: int) -> Union[str, List[str]]:
+    def __getitem__(self, item: int) -> Union[List[str], str]:
         if isinstance(item, slice):
             return [self.cluster[i[0]][i[1]] for i in self._meta[item]]
-        pid, item = self._meta[item]
-        return self.cluster[pid][item]
+        elif isinstance(item, int):
+            return self.string(item)
 
     def __iter__(self):
         for pid in self.cluster:

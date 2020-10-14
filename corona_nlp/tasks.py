@@ -1,7 +1,9 @@
+from typing import List, NamedTuple
+
 
 TASK9 = dict(
     question='What is known details transmission, incubation, and environmental stability?',
-    details=('What do we know details natural history, transmission, and diagnostics for the '
+    info=('What do we know details natural history, transmission, and diagnostics for the '
              'virus? What have we learned details infection prevention and control?'),
     tasks=[
         'Range of incubation periods for the disease in humans (and how this varies '
@@ -35,7 +37,7 @@ TASK9 = dict(
 
 TASK8 = dict(
     question='What do we know details COVID-19 risk factors?',
-    details='What have we learned from epidemiological studies?',
+    info='What have we learned from epidemiological studies?',
     tasks=[
         'Potential risk factors on smoking, pre-existing pulmonary disease.',
         'Potential risk factors on co-infections (determine whether co-existing '
@@ -57,7 +59,7 @@ TASK8 = dict(
 
 TASK7 = dict(
     question='What do we know details vaccines and therapeutics?',
-    details=("What has been published concerning research and development "
+    info=("What has been published concerning research and development "
              "and evaluation efforts of vaccines and therapeutics?"),
     tasks=[
         'Effectiveness of drugs being developed and tried to treat COVID-19 patients.',
@@ -88,7 +90,7 @@ TASK7 = dict(
 
 TASK6 = dict(
     question='What do we know details virus genetics, origin, and evolution?',
-    details=("What do we know details the virus origin and management measures "
+    info=("What do we know details the virus origin and management measures "
              "at the human-animal interface?"),
     tasks=[
         'Real-time tracking of whole genomes and a mechanism for coordinating the '
@@ -114,7 +116,7 @@ TASK6 = dict(
 
 TASK5 = dict(
     question='What has been published details medical care?',
-    details=('What has been published concerning surge capacity and nursing homes? What '
+    info=('What has been published concerning surge capacity and nursing homes? What '
              'has been published concerning efforts to inform allocation of scarce '
              'resources? What do we know details personal protective equipment? What has '
              'been published concerning alternative methods to advise on disease '
@@ -161,7 +163,7 @@ TASK5 = dict(
 
 TASK4 = dict(
     question='What do we know details the effectiveness of non-pharmaceutical interventions?',
-    details=('What is known details equity and barriers to compliance for '
+    info=('What is known details equity and barriers to compliance for '
              'non-pharmaceutical interventions?'),
     tasks=[
         'Guidance on ways to scale up NPIs in a more coordinated way (e.g., establish '
@@ -196,7 +198,7 @@ TASK4 = dict(
 
 TASK3 = dict(
     question='What has been published details ethical and social science considerations?',
-    details=('What has been published concerning ethical considerations for research? What '
+    info=('What has been published concerning ethical considerations for research? What '
              'has been published concerning social sciences at the outbreak response?'),
     tasks=[
         'Efforts to articulate and translate existing ethical principles and '
@@ -225,7 +227,7 @@ TASK3 = dict(
 
 TASK2 = dict(
     question='What has been published details information sharing and inter-sectoral collaboration?',
-    details=('What has been published details data standards and nomenclature? What has been '
+    info=('What has been published details data standards and nomenclature? What has been '
              'published details governmental public health? What do we know details risk '
              'communication? What has been published details communicating with high-risk '
              'populations? What has been published to clarify community measures? What has '
@@ -263,7 +265,7 @@ TASK2 = dict(
 
 TASK1 = dict(
     question='What do we know details diagnostics and surveillance?',
-    details=('What has been published concerning systematic, holistic approach to '
+    info=('What has been published concerning systematic, holistic approach to '
              'diagnostics (from the public health surveillance perspective to being able '
              'to predict clinical outcomes)?'),
     tasks=[
@@ -325,3 +327,27 @@ TASK1 = dict(
         'inclusive of environmental, demographic, and occupational risk factors.'
     ]
 )
+
+
+ALL_TASKS = [TASK1, TASK2, TASK3, TASK4, TASK5, TASK6, TASK7, TASK8, TASK9]
+
+
+class Task(NamedTuple):
+    id: int
+    question: str
+    info: str
+    tasks: List[str]
+
+    def all(self) -> List[str]:
+        return self.tasks
+
+    def __repr__(self):
+        return '{}(id: {}, question: {})'.format(
+            self.__class__.__name__, self.id, self.question)
+
+
+class TaskList(List[Task]):
+    def __init__(self):
+        for id, task in enumerate(ALL_TASKS, start=1):
+            task.update({'id': id})
+            self.append(Task(**task))

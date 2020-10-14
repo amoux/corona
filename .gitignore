@@ -2,3 +2,4 @@
 /notebooks*
 /.src*
 /models*
+.vscode/settings.json
