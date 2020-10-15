@@ -80,7 +80,7 @@ class CORD19Dataset(PaperIndexer):
                 for line in paper[key]:
                     yield line["text"]
 
-    def build(self, indices: List[int], minlen: int = 20) -> Papers:
+    def build(self, indices: List[int], minlen: int = 15) -> Papers:
         """Return an instance of papers with texts transformed to sentences."""
         index = Sentences(indices)
         cluster = index.init_cluster()
@@ -91,13 +91,13 @@ class CORD19Dataset(PaperIndexer):
 
         for paper in cluster:
             for sent in tokenize(next(docs)):
+                length = len(sent)  # Token/word level length (not chars).
+                if length <= minlen:
+                    continue
                 if not is_sentence(sent):
                     continue
                 string = normalize_whitespace(sent.text)
                 string = clean_tokenization(string)
-                length = len(string)
-                if length <= minlen:
-                    continue
                 if string not in cluster[paper]:
                     index.strlen += length
                     index.counts += 1

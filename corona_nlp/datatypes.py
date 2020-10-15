@@ -2,7 +2,7 @@ import collections
 import random
 from dataclasses import dataclass, field
 from typing import Any, Counter, Dict, List, Optional, Tuple, TypeVar, Union
-
+import copy
 from .utils import DataIO
 
 
@@ -142,7 +142,7 @@ class Papers:
         from .dataset import CORD19Dataset
         return CORD19Dataset(**self.init_args)
 
-    def index_select(self, ids, reverse=False, shuffle=False) -> 'Papers':
+    def index_select(self, ids, reverse=False, shuffle=False):
         if hasattr(ids, 'sample'):
             ids = list(ids.sample())
 
@@ -160,9 +160,12 @@ class Papers:
                 select.strlen += strlen
                 select.counts += 1
                 select.maxlen = max(select.maxlen, strlen)
-            children[parent] = self.cluster[parent]
+                children[parent].append(sentence)
 
-        return Papers(select, children)
+        papers = Papers(select, children)
+        if self.init_args is not None:
+            papers.init_args = self.init_args
+        return papers
 
     def __len__(self) -> int:
         return self.num_sents
@@ -174,8 +177,9 @@ class Papers:
     def __getitem__(self, item: int) -> Union[List[str], str]:
         if isinstance(item, slice):
             return [self.cluster[i[0]][i[1]] for i in self._meta[item]]
-        elif isinstance(item, int):
-            return self.string(item)
+        if isinstance(item, int):
+            pid, item = self._meta[item]
+            return self.cluster[pid][item]
 
     def __iter__(self):
         for pid in self.cluster:
