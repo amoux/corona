@@ -42,13 +42,18 @@ class QuestionAnsweringOutput(List[ModelOutput]):
     dist: Optional[np.ndarray] = None
 
     def attach_(self, *inputs) -> None:
-        self.q, self.c, self.ids, self.dist = inputs
+        q, c, self.ids, self.dist = inputs
+        self.q = q[0] if len(q) == 1 else q
+        self.c = c[0] if len(c) == 1 else c
 
     def popempty(self) -> Union[List[ModelOutput], None]:
         items = [self.pop(i) for i, o in enumerate(self) if not o.answer]
         if items:
             return items
         return None
+
+    def spans(self) -> List[Tuple[int, int]]:
+        return [(o.start, o.end) for o in self]
 
     def size(self) -> int:
         return len(self)
@@ -159,10 +164,12 @@ class ScibertQuestionAnswering:
 
         output = QuestionAnsweringOutput()
         context = self.compress(sents, mode=mode)
+        question, context = [self.sentencizer(x) for x in (question, context)]
         inputs = (question, context, ids, dists)
         output.attach_(*inputs)
-        question, context = [self.sentencizer(x) for x in (question, context)]
         params = QuestionAnsweringArguments(question, context, topk, **kwargs)
-        for prediction in self.pipeline(**params.todict()):
+        answers = self.pipeline(**params.todict())
+        answers.sort(key=lambda k: k['score'], reverse=True)
+        for prediction in answers:
             output.append(ModelOutput(**prediction))
         return output

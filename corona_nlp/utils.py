@@ -165,6 +165,8 @@ def render_output(
     style: str = "ent",
     manual: bool = True,
     jupyter: bool = True,
+    page: bool = False,
+    minify: bool = True,
     return_html: bool = False,
     label: str = 'ANSWER',
     title: str = 'Question',
@@ -208,12 +210,13 @@ def render_output(
             options = dict(compact=True, bg="#ed7118", color="#000000")
         else:
             options = dict(ents=None, colors=None)
-            colors = "linear-gradient({})".format(", ".format(gradient))
+            gradient = ", ".join(gradient)
+            colors = f"linear-gradient({gradient})"
             options.update({'ents': [label], 'colors': {label: colors}})
 
     if return_html:
         return displacy.render([docs], style=style, jupyter=False,
                                options=options, manual=manual)
 
-    displacy.render([docs], style=style, page=False, minify=True,
+    displacy.render([docs], style=style, page=page, minify=minify,
                     jupyter=jupyter, options=options, manual=manual)
