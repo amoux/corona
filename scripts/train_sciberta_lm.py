@@ -20,13 +20,17 @@ PAPERS_PKL = None
 CORD19_DIR = "d:/Datasets/CORD-19-research-challenge/2020-03-13/"
 NUM_PAPERS = -1  # -1 for all papers available in the directory.
 
-BATCH_SIZE = 6
-NUM_EPOCHS = 1
 SEQ_MAXLEN = 512
 VOCAB_SIZE = 30522
+MIN_TOK_FREQ = 2
 MAX_POS_WX = 514
 ATTN_HEADS = 12
 NUM_HIDDEN = 6
+
+BATCH_SIZE = 6
+NUM_EPOCHS = 2
+BLOCK_SIZE = 128
+SAVE_STEPS = 10_000
 
 
 def init_main_dirs() -> Tuple[Sequence[Path]]:
@@ -99,6 +103,7 @@ def main():
     else:
         papers = Papers.from_disk(PAPERS_PKL)
         dataset = papers.init_cord19_dataset()
+
     # Build the data sources needed to train a new language model w/HF:
     training_dataset_file = training_dataset.joinpath("cord19.xl.txt")
     papers_to_training_dataset(papers, training_dataset_file)
@@ -107,7 +112,7 @@ def main():
     tokenizer = ByteLevelBPETokenizer()
     tokenizer.train(
         vocab_size=VOCAB_SIZE,
-        min_frequency=2,
+        min_frequency=MIN_TOK_FREQ,
         files=[file.as_posix() for file in training_files.glob('*.txt')],
         special_tokens=["<s>", "<pad>", "</s>", "<unk>", "<mask>"],
     )
@@ -119,7 +124,7 @@ def main():
     )
     tokenizer._tokenizer.post_processor = BertProcessing(
         ("</s>", tokenizer.token_to_id("</s>")),
-        ("</s>", tokenizer.token_to_id("</s>")),
+        ("<s>", tokenizer.token_to_id("<s>")),
     )
     tokenizer.enable_truncation(max_length=SEQ_MAXLEN)
 
@@ -139,7 +144,7 @@ def main():
     line_by_line_dataset = LineByLineTextDataset(
         tokenizer=tokenizer,
         file_path=training_dataset_file.as_posix(),
-        block_size=128,
+        block_size=BLOCK_SIZE,
     )
     data_collator = DataCollatorForLanguageModeling(
         tokenizer=tokenizer, mlm=True, mlm_probability=0.15,
@@ -149,7 +154,7 @@ def main():
         overwrite_output_dir=True,
         num_train_epochs=NUM_EPOCHS,
         per_device_train_batch_size=BATCH_SIZE,
-        save_steps=10_000,
+        save_steps=SAVE_STEPS,
         save_total_limit=2,
     )
     trainer = Trainer(

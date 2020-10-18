@@ -31,31 +31,6 @@ class CORD19Dataset(PaperIndexer):
         else:
             self.sentence_tokenizer = SpacySentenceTokenizer(nlp_model)
 
-    def sample(
-        self, k: Optional[int] = None, s: Optional[int] = None, seed=None,
-    ) -> Union[List[int], None]:
-        """Return a sample (all|random k) or split of paper ID's.
-
-        :param k: number of ids to return from all samples, if `k=-1` then all
-            ids are returned sorted. Otherwise, if `k < max ids` -> shuffled.
-        :param s: return a split of all ids @ `s` e.g., if s=1 then all ids@1.
-        """
-        if k is not None:
-            random.seed(seed)
-            ids = list(self.index_paper.keys())
-            if k == -1:
-                return ids
-            assert k <= self.num_papers
-            return random.sample(ids, k=k)
-
-        if s is not None:
-            splits = self._splits
-            assert s <= len(splits), f'Expected `s` between: [0,{len(splits)}]'
-            if s == 0:
-                return list(range(self.index_start, splits[s] + 1))
-            if s > 0:
-                return list(range(splits[s - 1] + 1, splits[s] + 1))
-
     def title(self, index: int = None, paper_id: str = None) -> str:
         return self.load_paper(index, paper_id)["metadata"]["title"]
 
@@ -92,21 +67,21 @@ class CORD19Dataset(PaperIndexer):
         for paper in cluster:
             for sent in tokenize(next(docs)):
                 length = len(sent)  # Token/word level length (not chars).
-                if length <= minlen:
+                if length < minlen:
                     continue
                 if not is_sentence(sent):
                     continue
                 string = normalize_whitespace(sent.text)
                 string = clean_tokenization(string)
                 if string not in cluster[paper]:
-                    index.strlen += length
+                    index.seqlen += length
                     index.counts += 1
                     index.maxlen = max(index.maxlen, length)
                     cluster[paper].append(string)
 
         return Papers(index, cluster=cluster)
 
-    def batch(self, indices: List[int], minlen=20, workers=None) -> Papers:
+    def batch(self, indices: List[int], minlen=15, workers=None) -> Papers:
         maxsize = len(indices)
         workers = cpu_count() if workers is None else workers
 

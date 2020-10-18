@@ -1,4 +1,5 @@
 import json
+import random
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -39,6 +40,18 @@ class PaperIndexer:
             self._splits = np.array(x).cumsum(0).tolist()
         del file_paths
 
+    def _map_files_to_ids(self, json_files: List[str]) -> None:
+        for index, file in enumerate(json_files, self.index_start):
+            paper_id = file.name.replace(self.extension, "")
+            if paper_id not in self.paper_index:
+                self.paper_index[paper_id] = index
+                self.index_paper[index] = paper_id
+
+        ids = self.index_paper.keys()
+        setattr(self, "first_index", min(ids))
+        setattr(self, 'last_index', max(ids))
+        del ids
+
     @property
     def num_papers(self) -> int:
         return sum(self._bins)
@@ -57,17 +70,28 @@ class PaperIndexer:
         path = self._index_dirpath(id)
         return path.joinpath(file + self.extension)
 
-    def _map_files_to_ids(self, json_files: List[str]) -> None:
-        for index, file in enumerate(json_files, self.index_start):
-            paper_id = file.name.replace(self.extension, "")
-            if paper_id not in self.paper_index:
-                self.paper_index[paper_id] = index
-                self.index_paper[index] = paper_id
+    def sample(self, k: int = None, s: int = None, seed: int = None):
+        """Return a sample (all|random k) or split of paper ID's.
 
-        ids = self.index_paper.keys()
-        setattr(self, "first_index", min(ids))
-        setattr(self, 'last_index', max(ids))
-        del ids
+        :param k: number of ids to return from all samples, if `k=-1` then all
+            ids are returned sorted. Otherwise, if `k < max ids` -> shuffled.
+        :param s: return a split of all ids @ `s` e.g., if s=1 then all ids@1.
+        """
+        if k is not None:
+            random.seed(seed)
+            ids = list(self.index_paper.keys())
+            if k == -1:
+                return ids
+            assert k <= self.num_papers
+            return random.sample(ids, k=k)
+
+        if s is not None:
+            splits = self._splits
+            assert s <= len(splits), f'Expected `s` between: [0,{len(splits)}]'
+            if s == 0:
+                return list(range(self.index_start, splits[s] + 1))
+            if s > 0:
+                return list(range(splits[s - 1] + 1, splits[s] + 1))
 
     def _index_dirpath(self, index: int) -> Path:
         # return lower bound if one source or index is less or equal to the
@@ -75,9 +99,9 @@ class PaperIndexer:
         if len(self._bins) == 1 or index <= self._splits[0]:
             return self.paths[0]
 
-        # Interpolation search - searches the correct path for a given index
+        # Interpolation search - searche for the correct path for a given index
         # by returning the id to path closest to its maximum split size. A
-        # split is based on the cumulative sum of each item (a bin is the
+        # split is based on the cumulative sum of each bin (a bin is the
         # number of files in n directory), after the first item value.
 
         def nearest_mid(start: int, end: int, x: List[int], y: int) -> int:

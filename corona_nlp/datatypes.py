@@ -1,8 +1,11 @@
 import collections
 import random
 from dataclasses import dataclass, field
-from typing import Any, Counter, Dict, List, Optional, Tuple, TypeVar, Union
-import copy
+from pathlib import Path
+from typing import Any, Counter, Dict, List, Optional, Tuple, Union
+
+from nltk.tokenize import word_tokenize
+
 from .utils import DataIO
 
 
@@ -11,7 +14,7 @@ class Sentences:
     indices: List[int] = field(default_factory=list, repr=False)
     counts: int = 0
     maxlen: int = 0
-    strlen: int = 0
+    seqlen: int = 0
 
     def init_cluster(self) -> Dict[int, List[Any]]:
         return dict([(index, []) for index in self.indices])
@@ -24,9 +27,10 @@ class Sentences:
 class Papers:
     sentences: Sentences = field(repr=False)
     cluster: Dict[int, List[str]] = field(repr=False)
-    avg_strlen: float = field(init=False)
+    avg_seqlen: float = field(init=False)
     num_papers: int = field(init=False)
     num_sents: int = field(init=False)
+    num_tokens: int = field(init=False)
     _meta: List[Tuple[int, int]] = field(init=False, repr=False)
     init_args: Optional[Dict[str, Any]] = field(
         init=False, repr=False, default=None,
@@ -36,9 +40,10 @@ class Papers:
         if isinstance(self.sentences, Sentences):
             for key, val in self.sentences.__dict__.items():
                 setattr(self, key, val)
-        self.avg_strlen = round(self.strlen / self.counts, 2)
+        self.avg_seqlen = round(self.seqlen / self.counts, 2)
         self.num_papers = len(self.indices)
         self.num_sents = self.counts
+        self.num_tokens = self.seqlen
         self._meta = list(self._edges())
 
     def _edges(self):
@@ -67,10 +72,15 @@ class Papers:
         """Lookup paper-ids by a single or list of sentence ids.
 
         :param mode: Data format. `inline` has index keys: `pid, sid, loc`
-         and `table` has paper-ids as keys and sentence-ids as values.
+         and `table` has paper-ids as keys and sentence-ids as values (note
+         that table is the only format that adds by id - no-repeats). And
+         `index` is a list of integers of paper-ids (for all sentence-ids).
+
         - modes:
           - `inline`: List[Dict[str, Union[int, Tuple[int, ...]]]]
           - `table` : Dict[int, List[int]]
+          - `index` : List[int]
+
         """
         is_single_input = False
         if isinstance(sent_ids, int):
@@ -79,8 +89,11 @@ class Papers:
 
         inline: Optional[List[Dict[str, Union[int, Tuple[int, ...]]]]] = None
         table: Optional[Dict[int, List[int]]] = None
+        index: Optional[List[int]] = None
         if mode == "inline":
             inline = []
+        elif mode == "index":
+            index = []
         else:
             table = {}
 
@@ -92,6 +105,8 @@ class Papers:
                     "sid": sent_id,
                     "loc": (pid, item),
                 })
+            elif index is not None:
+                index.append(pid)
             elif table is not None:
                 if pid not in table:
                     table[pid] = [sent_id]
@@ -102,6 +117,8 @@ class Papers:
             if is_single_input:
                 return inline[0]
             return inline
+        elif index is not None:
+            return index
         else:
             return table
 
@@ -118,20 +135,25 @@ class Papers:
         """Load the state from a directory."""
         return DataIO.load_data(path)
 
-    def attach_init_args(self, corona) -> None:
-        """Attach the initialization **kwargs used in CORD19Dataset.__init__.
+    def attach_init_args(self, cord19) -> None:
+        """Attach initialization keyword arguments to self (Papers instance).
 
-        * An attribute `init_args` of type `Dict[str, Any]` added with the
+        - An attribute `init_args` of type `Dict[str, Any]` added with the
         initialization keyword arguments, which can later be used to load
         the state of parameters responsible for the origin of this "self".
         """
-        self.init_args = dict(
-            source=corona.paths,
-            text_keys=corona.text_keys,
-            index_start=corona.index_start,
-            sort_first=corona.is_files_sorted,
-            nlp_model=corona.sentence_tokenizer.nlp_model,
-        )
+        source = cord19.paths
+        if isinstance(source[0], Path):
+            # detach posix from paths (for compatibility with other os env)
+            source = [p.as_posix() for p in source]
+
+        self.init_args = {
+            'source': source,
+            'text_keys': cord19.text_keys,
+            'index_start': cord19.index_start,
+            'sort_first': cord19.is_files_sorted,
+            'nlp_model': cord19.sentence_tokenizer.nlp_model,
+        }
 
     def init_cord19_dataset(self):
         if not hasattr(self, 'init_args') or self.init_args is None:
@@ -156,10 +178,10 @@ class Papers:
         children = select.init_cluster()
         for parent in select.indices:
             for sentence in self.cluster[parent]:
-                strlen = len(sentence)
-                select.strlen += strlen
+                seqlen = len(word_tokenize(sentence))
+                select.seqlen += seqlen
                 select.counts += 1
-                select.maxlen = max(select.maxlen, strlen)
+                select.maxlen = max(select.maxlen, seqlen)
                 children[parent].append(sentence)
 
         papers = Papers(select, children)
@@ -196,7 +218,7 @@ def merge_papers(papers: List[Papers]) -> Papers:
     i = Sentences()
     c = i.init_cluster()
     for p in papers:
-        i.strlen += p.strlen
+        i.seqlen += p.seqlen
         i.counts += p.counts
         i.maxlen = max(i.maxlen, p.maxlen)
         i.indices.extend(p.indices)

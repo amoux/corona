@@ -105,12 +105,13 @@ def common_tokens(texts: List[str], minlen=3, nlp=None,
 
 
 def extract_questions(papers: Papers,
-                      minlen: int = 30,
+                      minlen: int = 10,
                       sample: Optional[Iterable[int]] = None) -> Union[None, Papers]:
     """Extract questions from an instance of papers.
 
     :param papers: An instance of Papers.
-    :param minlen: Minimum length of a question to add, e.g., by using `len(str)`.
+    :param minlen: Minimum sequence length of a title to consider as valid.
+        The length is computed using token units using `nltk.tokenize.word_tokenize`.
     :param sample: (Optional) An iterable of paper ids to use for retriving for
         questions. If None, all paper ids from the papers instance is used. 
     :return: A newly constructed Papers instance with questions mapped to
@@ -129,16 +130,16 @@ def extract_questions(papers: Papers,
     idx = Sentences()
     for pid in tqdm(sample, desc='paper_ids'):
         for sent in papers.sents(pid):
-            length = len(sent)
+            words = word_tokenize(sent.lower())
+            length = len(words)
             if length < minlen:
                 continue
-            words = sent.lower().split()
             if words[0] in interrogative and words[-1].endswith("?"):
                 if pid not in questions:
                     questions[pid] = []
                 if sent in questions[pid]:
                     continue
-                idx.strlen += length
+                idx.seqlen += length
                 idx.counts += 1
                 idx.maxlen = max(idx.maxlen, length)
                 questions[pid].append(sent)

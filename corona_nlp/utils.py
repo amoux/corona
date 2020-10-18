@@ -5,12 +5,8 @@ from string import punctuation
 from typing import IO, Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
-import pandas as pd
 from nltk.tokenize import word_tokenize
 from spacy import displacy
-
-from .indexing import PaperIndexer
-from .jsonformatter import generate_clean_df
 
 
 def clean_punctuation(text: str) -> str:
@@ -69,7 +65,7 @@ def split_dataset(dataset: List[Any],
 
 class DataIO:
     @staticmethod
-    def save_data(file_path: str, data_obj: Any) -> IO:
+    def save_data(file_path: Union[str, Path], data_obj: Any) -> None:
         file_path = Path(file_path)
         if file_path.is_dir():
             if not file_path.exists():
@@ -78,82 +74,10 @@ class DataIO:
             pickle.dump(data_obj, pkl, pickle.HIGHEST_PROTOCOL)
 
     @staticmethod
-    def load_data(file_path: str) -> Any:
+    def load_data(file_path: Union[str, Path]) -> Any:
         file_path = Path(file_path)
         with file_path.open("rb") as pkl:
             return pickle.load(pkl)
-
-
-def papers_to_csv(sources: Union[str, Path, List[Union[str, Path]]],
-                  out_dir: str = "data") -> None:
-    """Convert one or more directories with json files into a csv file(s).
-
-    :param sources: Path or iterable of paths to the root directory of
-        the CORD19 Dataset e.g., `CORD-19-research-challenge/2020-03-13/`.
-    """
-    def sample(i: int, splits: List[int], index_start: int) -> List[int]:
-        if i == 0:
-            return list(range(index_start, splits[i] + 1))
-        if i > 0:
-            return list(range(splits[i - 1] + 1, splits[i] + 1))
-
-    out_dir = Path(out_dir) if not isinstance(out_dir, Path) else out_dir
-    if not out_dir.is_dir():
-        out_dir.mkdir(parents=True)
-
-    indexer = PaperIndexer(sources)
-    index_start = indexer.index_start
-    splits = indexer._splits
-    for i in range(len(splits)):
-        try:
-            ids = sample(i, splits, index_start)
-            papers = indexer.load_papers(ids)
-        except Exception as err:
-            raise Exception(
-                f"{indexer.source_name[i]} generated an exception; {err}"
-            )
-        else:
-            df = generate_clean_df(papers)
-            df.drop_duplicates(subset=["paper_id"], inplace=True)
-            df.dropna(inplace=True)
-
-            file_name = f"{indexer.source_name[i]}_{splits[i]}_papers.csv"
-            file_path = out_dir.joinpath(file_name)
-            df.to_csv(file_path, index=False)
-
-            print("All {} files from directory {} saved in: {}".format(
-                splits[i], indexer.source_name[i], file_path)
-            )
-
-
-def concat_csv_files(source_dir: str,
-                     file_name="covid-lg.csv",
-                     out_dir="data",
-                     drop_cols=["raw_authors", "raw_bibliography"],
-                     return_df=False):
-    """Concat all CSV files into one single file.
-
-    return_df: If True, saving to file is ignored and the pandas
-        DataFrame instance holding the data is returned.
-
-    Usage:
-        >>> concat_csv_files('path/to/csv-files-dir/', out_dir='data')
-    """
-    dataframes = []
-    for csv_file in Path(source_dir).glob("*.csv"):
-        df = pd.read_csv(csv_file, index_col=None, header=0)
-        df.drop(columns=drop_cols, inplace=True)
-        dataframes.append(df)
-
-    master_df = pd.concat(dataframes, axis=0, ignore_index=True)
-    if not return_df:
-        out_dir = Path(out_dir)
-        if not out_dir.exists():
-            out_dir.mkdir(parents=True)
-        file_path = out_dir.joinpath(file_name)
-        master_df.to_csv(file_path, index=False)
-    else:
-        return master_df
 
 
 def render_output(
