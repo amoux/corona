@@ -256,10 +256,29 @@ corona.render_output(answer=answer, context=context, question=question)
 ```markdown
 * Question
 
-> What has been published concerning systematic, holistic approach to diagnostics (from the public health surveillance perspective to being able to predict clinical outcomes)?
+> What has been published concerning systematic, holistic approach to 
+diagnostics (from the public health surveillance perspective to being 
+able to predict clinical outcomes)?
 
 
 - Context
 
-In case of laboratory confirmation, `<< the national reference laboratory aims to obtain material from regional laboratories for further sequencing. ANSWER >>` An alternate measure of program success is the extent to which screening delays the first importation of cases into the community, possibly providing additional time to train medical staff, deploy public health responders or refine travel policies (Cowling et al., Unlike the UK national strategy documents and plans, the US National Health Information Infrastructure Strategy document (also known as "Information for Health") refers explicitly to GIS and real-time health and disease monitoring and states that "public health will need to include in its toolkit integrated data systems; high-quality community-level data; tools to identify significant health trends in real-time data streams; and geographic information systems" [48]. This thinktank is used to address matters related to combating new issues and to expand on the Saudi reach to the international scientific community. For the purpose of this paper, the following de�nition is used, "Public health surveillance is the ongoing systematic collection, analysis, interpretation and dissemination of health data for the planning, implementation and evaluation of public health action" (see Section 2.3 below). Finally, we discuss policy and logistical and technological obstacles to achieving a potential transformation of public health microbiology.
+In case of laboratory confirmation, `<< the national reference laboratory 
+aims to obtain material from regional laboratories for further sequencing. ANSWER >>` 
+An alternate measure of program success is the extent to which screening delays the 
+first importation of cases into the community, possibly providing additional time 
+to train medical staff, deploy public health responders or refine travel policies 
+(Cowling et al., Unlike the UK national strategy documents and plans, the US National 
+Health Information Infrastructure Strategy document (also known as "Information for Health") 
+refers explicitly to GIS and real-time health and disease monitoring and states that "public 
+health will need to include in its toolkit integrated data systems; high-quality 
+community-level data; tools to identify significant health trends in real-time data streams; 
+and geographic information systems" [48]. This thinktank is used to address matters related 
+to combating new issues and to expand on the Saudi reach to the international scientific 
+community. For the purpose of this paper, the following de�nition is used, "Public health 
+surveillance is the ongoing systematic collection, analysis, interpretation and 
+dissemination of health data for the planning, implementation and evaluation of 
+public health action" (see Section 2.3 below). Finally, we discuss policy and 
+logistical and technological obstacles to achieving a potential transformation 
+of public health microbiology.
 ```
