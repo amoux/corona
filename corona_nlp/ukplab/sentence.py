@@ -1,11 +1,11 @@
 from collections import OrderedDict
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import torch
 import torch.nn as nn
 from tqdm.auto import tqdm
-from transformers import AutoTokenizer
+from transformers import AutoModel, AutoTokenizer
 
 from .models import Pooling, Transformer
 
@@ -20,13 +20,13 @@ class SentenceTransformer(nn.Sequential):
         do_sqrt_tokens: bool = False,
         do_mean_tokens: bool = True,
         device: Optional[str] = None,
-        model_kwargs: Dict = {},
-        tokenizer_kwargs: Dict = {},
+        model_kwargs: Dict[str, Any] = {},
+        tokenizer_kwargs: Dict[str, Any] = {},
     ) -> None:
         if device is None:
-            device = torch.device(
-                'cuda' if torch.cuda.is_available() else 'cpu'
-            )
+            computer = 'cuda' if torch.cuda.is_available() else 'cpu'
+            device = torch.device(computer)
+
         transformer = Transformer(model_name_or_path, **model_kwargs)
         pooling = Pooling(
             hidden_size=transformer.word_dim,
@@ -54,20 +54,22 @@ class SentenceTransformer(nn.Sequential):
     def sent_dim(self) -> int:
         return self._modules['1'].sent_dim
 
-    def encode(self, sentences: List[str], batch_size=9, show_progress=True):
-        if hasattr(sentences, '_meta'):
-            sentences = list(sentences)
+    def auto_model(self) -> AutoModel:
+        return self._modules['0'].model
 
-        self.eval()
+    def auto_tokenizer(self) -> AutoTokenizer:
+        return self.tokenizer
+
+    def encode(self, sentences: List[str], batch_size=9, show_progress=True):
         lengths = np.argsort([len(sent) for sent in sentences])
         maxsize = lengths.size
         batches = range(0, maxsize, batch_size)
         if show_progress:
             batches = tqdm(batches, desc='batch')
-
         encode = self.tokenizer.encode
         batch_encode_plus = self.tokenizer.batch_encode_plus
 
+        self.eval()
         embeddings = []
         for i in batches:
             splits: List[List[int]] = []
@@ -86,8 +88,9 @@ class SentenceTransformer(nn.Sequential):
                                       is_split_into_words=True,
                                       return_tensors='pt').to(self.device)
             with torch.no_grad():
-                output = self.forward(batch)['sentence_embed']
-                embeddings.extend(output.to('cpu').numpy())
+                output = self.forward(batch)
+                sent_embed = output['sentence_embed']
+                embeddings.extend(sent_embed.to('cpu').numpy())
 
         embeddings = [embeddings[i] for i in np.argsort(lengths)]
 

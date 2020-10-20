@@ -1,7 +1,7 @@
 import sys
 
 from .dataset import CORD19Dataset
-from .datatypes import Papers, Sentences, merge_papers
+from .core import Papers, Sentences, merge_papers
 from .indexing import PaperIndexer, Path
 from .retrival import (common_tokens, extract_questions, extract_titles_fast,
                        extract_titles_slow)

@@ -1,7 +1,7 @@
 import concurrent.futures
 import sys
 from multiprocessing import cpu_count
-from typing import Dict, Iterable, List, NamedTuple, Optional, Tuple, Union
+from typing import Dict, Iterable, List, Optional, Union
 
 import numpy as np
 import spacy
@@ -9,7 +9,7 @@ from nltk.tokenize import word_tokenize
 from tqdm.auto import tqdm
 
 from .dataset import CORD19Dataset
-from .datatypes import Papers, Sentences
+from .core import GoldIds, GoldIdsOutput, Papers, Sentences
 from .tasks import TaskList
 from .utils import clean_punctuation, normalize_whitespace
 
@@ -19,51 +19,6 @@ except ModuleNotFoundError:
     print(sys.exc_info())
 else:
     globals()["faiss"] = _faiss_lib
-
-
-class GoldIds(NamedTuple):
-    task_id: int
-    ids: np.ndarray
-    dist: np.ndarray
-
-    def size(self) -> int:
-        return self.ids.size
-
-    def mindist(self) -> float:
-        return self.dist.min().item()
-
-    def maxdist(self) -> float:
-        return self.dist.max().item()
-
-    def __repr__(self):
-        return '{}(task_id: {}, size: {}, mindist: {}, maxdist: {})'.format(
-            self.__class__.__name__, self.task_id, self.size(),
-            round(self.mindist(), 4), round(self.maxdist(), 4),
-        )
-
-
-class GoldIdsOutput(List[GoldIds]):
-    @property
-    def num_tasks(self) -> int:
-        return len(self)
-
-    def all_sizes(self) -> List[int]:
-        return [gold.size() for gold in self]
-
-    def sample(self) -> Iterable[int]:
-        for gold in self:
-            for pid in gold.ids:
-                yield pid.item()
-
-    def iterall(self) -> Iterable[Tuple[int, np.int64, np.float32]]:
-        for gold in self:
-            for pid, dist in zip(gold.ids, gold.dist):
-                yield gold.task_id, pid, dist
-
-    def __repr__(self):
-        return '{}(num_tasks: {}, size: {})'.format(
-            self.__class__.__name__, len(self), tuple(self.all_sizes()),
-        )
 
 
 def common_tokens(texts: List[str], minlen=3, nlp=None,
@@ -284,4 +239,5 @@ def tune_ids(encoder,
         ids = np.array([decode[k] for k in I.flatten()])
         output.append(GoldIds(task.id, ids=ids, dist=D.flatten()))
 
+    output.pids = [i for i, _ in output.common(topk=-1)]
     return output

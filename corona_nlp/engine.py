@@ -7,11 +7,16 @@ import spacy
 import torch
 from transformers import (BertForQuestionAnswering, BertTokenizer,
                           QuestionAnsweringPipeline)
+from transformers.modeling_utils import ModuleUtilsMixin
 
 from .dataset import CORD19Dataset
-from .datatypes import Papers
+from .core import Papers
 from .summarization import BertSummarizer, frequency_summarizer
 from .ukplab.sentence import SentenceTransformer
+
+
+class InvalidModelNameOrPathError(ValueError):
+    pass
 
 
 class QuestionAnsweringArguments(NamedTuple):
@@ -79,8 +84,10 @@ class ScibertQuestionAnswering:
             model_name_or_path: Optional[str] = None,
             do_lower_case: Optional[bool] = None,
             nlp_model: str = 'en_core_sci_sm',
-            model_device: Optional[Any] = None,
+            model_device: Optional[str] = None,
             encoder_device: Optional[str] = None,
+            summarizer_hidden: int = -2,
+            summarizer_reduce: str = 'mean',
     ) -> None:
         self.papers = Papers.from_disk(papers) \
             if isinstance(papers, str) else papers
@@ -88,31 +95,51 @@ class ScibertQuestionAnswering:
             if isinstance(index, str) else index
         self.encoder = SentenceTransformer(encoder, device=encoder_device) \
             if isinstance(encoder, str) else encoder
-        self.cord19 = cord19
-        if hasattr(self.papers, 'init_args'):
-            self.cord19 = self.papers.init_cord19_dataset()
-        self.nlp = self.cord19.sentence_tokenizer.nlp() \
-            if isinstance(self.cord19, CORD19Dataset) else spacy.load(nlp_model)
+
+        if cord19 is None:
+            if hasattr(self.papers, 'init_args'):
+                self.cord19 = self.papers.init_cord19_dataset()
+                if hasattr(self.cord19, 'sentencizer'):
+                    self.nlp = self.cord19.sentencizer.nlp
+        elif isinstance(cord19, CORD19Dataset):
+            self.cord19 = cord19
+            self.nlp = cord19.sentencizer.nlp
+        else:
+            self.nlp = spacy.load(nlp_model)
 
         if model_name_or_path is None:
             model_name_or_path = self.default_model_name
         if do_lower_case is None:
             do_lower_case = self.do_lower_case
-        name = model_name_or_path
 
-        self.model = BertForQuestionAnswering.from_pretrained(name) \
-            if model is None else model
+        if model is None or isinstance(model, str):
+            self.model = BertForQuestionAnswering \
+                .from_pretrained(model_name_or_path)
+        elif isinstance(model, BertForQuestionAnswering):
+            self.model = model
+        else:
+            raise InvalidModelNameOrPathError
+
         if model_device is not None:
-            device = torch.device(
-                'cuda' if torch.cuda.is_available() else 'cpu')
+            device = torch.device(model_device)
             self.model = self.model.to(device)
-        self.tokenizer = BertTokenizer.from_pretrained(name, do_lower_case=do_lower_case) \
-            if tokenizer is None else tokenizer
-        self.pipeline = QuestionAnsweringPipeline(self.model, self.tokenizer)
 
+        if tokenizer is None or isinstance(tokenizer, str):
+            self.tokenizer = BertTokenizer.from_pretrained(
+                model_name_or_path, do_lower_case=do_lower_case)
+        elif isinstance(tokenizer, BertTokenizer):
+            self.tokenizer = tokenizer
+        else:
+            raise InvalidModelNameOrPathError
+
+        self.pipeline = QuestionAnsweringPipeline(self.model, self.tokenizer)
         self._freq_summarizer = frequency_summarizer
-        self._bert_summarizer = BertSummarizer.load(
-            name, self.encoder.tokenizer)
+        self._bert_summarizer = BertSummarizer(
+            model_name_or_path=model_name_or_path,
+            tokenizer=self.tokenizer,
+            hidden=summarizer_hidden,
+            reduce_option=summarizer_reduce,
+        )
 
     @property
     def max_num_sents(self) -> int:

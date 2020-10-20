@@ -73,6 +73,6 @@ class Pooling(nn.Module):
                 output.append(mean_sqrt)
 
         output = torch.cat(output, dim=1)
-        inputs.update(dict(sentence_embed=output))
+        inputs.update({'sentence_embed': output})
 
         return inputs

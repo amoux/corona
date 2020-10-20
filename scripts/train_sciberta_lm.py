@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Sequence, Tuple
 
 from corona_nlp.dataset import CORD19Dataset
-from corona_nlp.datatypes import Papers
+from corona_nlp.core import Papers
 from tokenizers import ByteLevelBPETokenizer
 from tokenizers.implementations import ByteLevelBPETokenizer
 from tokenizers.processors import BertProcessing

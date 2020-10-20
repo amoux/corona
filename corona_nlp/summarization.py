@@ -1,8 +1,24 @@
-from typing import List, Union
+from dataclasses import asdict, dataclass
+from typing import Any, Dict, List, Optional, Union
 
 import spacy
-from summarizer import Summarizer
-from transformers import BertConfig, BertModel, BertTokenizer
+from summarizer import SingleModel
+from summarizer.sentence_handler import SentenceHandler
+from transformers import AutoModel, AutoTokenizer
+
+
+@dataclass
+class SummarizerArguments:
+    model: Optional[str] = None
+    custom_model: Optional[AutoModel] = None
+    custom_tokenizer: Optional[AutoTokenizer] = None
+    hidden: int = -2
+    reduce_option: str = 'mean'
+    sentence_handler: Optional[SentenceHandler] = None
+    random_state: int = 12345
+
+    def todict(self) -> Dict[str, Any]:
+        return asdict(self)
 
 
 def frequency_summarizer(text: Union[str, List[str]],
@@ -45,12 +61,42 @@ def frequency_summarizer(text: Union[str, List[str]],
     return summary
 
 
-class BertSummarizer:
-    @staticmethod
-    def load(model: str, tokenizer: BertTokenizer, device=None) -> Summarizer:
-        config = BertConfig.from_pretrained(model)
-        config.output_hidden_states = True
-        bert_model = BertModel.from_pretrained(model, config=config)
-        if device is not None:
-            bert_model = bert_model.to(device)
-        return Summarizer(custom_model=bert_model, custom_tokenizer=tokenizer)
+class BertSummarizer(SingleModel):
+    def __init__(
+        self,
+        model: Optional[AutoModel] = None,
+        tokenizer: Optional[AutoTokenizer] = None,
+        model_name_or_path: Optional[str] = None,
+        hidden: int = -2,
+        reduce_option: str = 'mean',
+        sentence_handler: Optional[SentenceHandler] = None,
+        random_state: int = 12345,
+    ) -> None:
+        if model_name_or_path is not None:
+            model = AutoModel.from_pretrained(model_name_or_path,
+                                              output_hidden_states=True)
+            if tokenizer is None:
+                tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
+        elif model is not None and hasattr(model, 'config') \
+                and model.config is not None:
+            model.config.output_hidden_states = True
+        else:
+            raise ValueError(
+                'Expected a `model and tokenizer` as initialized instances '
+                'or a `model_name_or_path` string for constructing new '
+                'AutoModel and AutoTokenizer transformer\'s instances.'
+            )
+        if sentence_handler is None:
+            sentence_handler = SentenceHandler()
+
+        kwargs = SummarizerArguments(
+            # The API enforced this (We simply ignore it)
+            model='bert-base-uncased',
+            custom_model=model,
+            custom_tokenizer=tokenizer,
+            hidden=hidden,
+            reduce_option=reduce_option,
+            sentence_handler=sentence_handler,
+            random_state=random_state,
+        )
+        super(BertSummarizer, self).__init__(**kwargs.todict())

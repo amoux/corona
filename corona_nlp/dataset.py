@@ -1,11 +1,10 @@
 import concurrent.futures
-import random
 from multiprocessing import cpu_count
-from typing import Callable, Iterator, List, Optional, Tuple, Union
+from typing import Iterable, Iterator, List, Tuple, Union
 
 from tqdm.auto import tqdm
 
-from .datatypes import Papers, Sentences, merge_papers
+from .core import Papers, Sentences, merge_papers
 from .indexing import PaperIndexer
 from .tokenizer import SpacySentenceTokenizer
 from .utils import clean_tokenization, normalize_whitespace
@@ -19,17 +18,11 @@ class CORD19Dataset(PaperIndexer):
             index_start: int = 1,
             sort_first: bool = False,
             nlp_model: str = "en_core_web_sm",
-            sentence_tokenizer=None,
+            **kwargs,
     ):
         super(CORD19Dataset, self).__init__(source, index_start, sort_first)
         self.text_keys = text_keys
-        self.sentence_tokenizer = sentence_tokenizer
-        if sentence_tokenizer is not None:
-            if not hasattr(sentence_tokenizer, 'tokenize'):
-                raise AttributeError(f'Callable[{sentence_tokenizer.__name__}]'
-                                     ' missing ``self.tokenize()`` attribute.')
-        else:
-            self.sentence_tokenizer = SpacySentenceTokenizer(nlp_model)
+        self.sentencizer = SpacySentenceTokenizer(nlp_model, **kwargs)
 
     def title(self, index: int = None, paper_id: str = None) -> str:
         return self.load_paper(index, paper_id)["metadata"]["title"]
@@ -57,29 +50,34 @@ class CORD19Dataset(PaperIndexer):
 
     def build(self, indices: List[int], minlen: int = 15) -> Papers:
         """Return an instance of papers with texts transformed to sentences."""
-        index = Sentences(indices)
-        cluster = index.init_cluster()
+        idx = Sentences(indices)
         docs = self.docs(indices)
+        tokenize = self.sentencizer
+        is_sentence = self.sentencizer.is_sentence
 
-        tokenize = self.sentence_tokenizer.tokenize
-        is_sentence = self.sentence_tokenizer.is_sentence
+        def pipeline() -> Iterable:
+            text = next(docs)
+            text = normalize_whitespace(text)
+            text = clean_tokenization(text)
+            sent_spans = tokenize(text)
+            return sent_spans
 
-        for paper in cluster:
-            for sent in tokenize(next(docs)):
-                length = len(sent)  # Token/word level length (not chars).
+        papers = idx.init_cluster()
+        for pid in papers:
+            for sent in pipeline():
+                if sent.text in papers[pid]:
+                    continue
+                length = len(sent)
                 if length < minlen:
                     continue
                 if not is_sentence(sent):
                     continue
-                string = normalize_whitespace(sent.text)
-                string = clean_tokenization(string)
-                if string not in cluster[paper]:
-                    index.seqlen += length
-                    index.counts += 1
-                    index.maxlen = max(index.maxlen, length)
-                    cluster[paper].append(string)
+                idx.seqlen += length
+                idx.counts += 1
+                idx.maxlen = max(idx.maxlen, length)
+                papers[pid].append(sent.text)
 
-        return Papers(index, cluster=cluster)
+        return Papers(idx, cluster=papers)
 
     def batch(self, indices: List[int], minlen=15, workers=None) -> Papers:
         maxsize = len(indices)

@@ -11,7 +11,7 @@ Construct a `CORD19Dataset` object.  Initialize with a single path or a list pat
 ```python
 import corona_nlp as corona
 
-rootdir = corona.Path("path/to/CORD-19-research-challenge/2020-03-13/")
+root = corona.Path("path/to/CORD-19-research-challenge/2020-03-13/")
 source = [p.joinpath(p.name) for p in root.iterdir() if p.is_dir()]
 
 dataset = corona.CORD19Dataset(
@@ -98,7 +98,7 @@ for idx, sent in enumerate(doc.sents): print(f'{idx}:\t{sent}')
 3: The effect of ... electric resistance, molecule trafficking, calcium (Ca 2+ ) homeostasis, gene expression and proliferation studies.
 ```
 
-> `corona_nlp.datatypes.Papers.__str__` **method**
+> `corona_nlp.core.Papers.__str__` **method**
 
 - Wow 🤔 `13,202` papers produce `1,890,230` million sentences and `60,847,005` million tokens! It takes about ~30 minutes with *SSD* and around ~40 on *HDD*, but it really depends on hardware.
 
@@ -282,3 +282,7 @@ public health action" (see Section 2.3 below). Finally, we discuss policy and
 logistical and technological obstacles to achieving a potential transformation 
 of public health microbiology.
 ```
+
+- Here's an example of the `render_output()` method shown above in a jupyter notebook:
+
+![question-answering-jupyter-demo](src/img/question-answering.gif)

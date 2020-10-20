@@ -1,10 +1,7 @@
-import functools
-from typing import List, NamedTuple, Optional
+from typing import Iterable, List, NamedTuple, Optional
 
 import spacy
-from spacy.lang.en import English
-from spacy.tokens.doc import Doc
-from spacy.tokens.span import Span
+from spacy.tokens import Doc, Span
 
 
 class TextScore(NamedTuple):
@@ -28,28 +25,19 @@ class SpacySentenceTokenizer:
         :params nlp_model: spaCy model to use for the tokenizer.
         :params disable: name of spaCy's pipeline components to disable.
         """
+        nlp = spacy.load(nlp_model, disable=disable)
+        nlp.max_length = max_length
+        self.nlp = nlp
         self.nlp_model = nlp_model
         self.word_ratio = word_ratio
         self.char_ratio = char_ratio
         self.min_tokens = min_tokens
-        self.disable = disable
+        self.disabled_pipes = disable
         self.max_length = max_length
 
-    @property
-    def cache(self):
-        info = self.nlp.cache_info()
-        if info.hits:
-            return info.hits
-
-    @functools.lru_cache()
-    def nlp(self) -> List[English]:
-        nlp_ = spacy.load(self.nlp_model, disable=self.disable)
-        nlp_.max_length = self.max_length
-        return nlp_
-
-    def tokenize(self, doc: str) -> List[Span]:
+    def tokenize(self, text: str) -> List[Span]:
         """Tokenize to sentences from a string of sequences to sentences."""
-        doc = self.nlp()(doc)
+        doc = self.nlp(text)
         return list(doc.sents)
 
     def score(self, doc: Doc) -> TextScore:
@@ -74,5 +62,8 @@ class SpacySentenceTokenizer:
     def __repr__(self):
         return "{}(model: {}, pipe: {}, word_ratio: {}, char_ratio: {})".format(
             self.__class__.__name__, self.nlp_model,
-            tuple(self.disable), self.word_ratio, self.char_ratio
+            tuple(self.disabled_pipes), self.word_ratio, self.char_ratio
         )
+
+    def __call__(self, text: str) -> Iterable[Span]:
+        return self.nlp(text).sents

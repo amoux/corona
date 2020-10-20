@@ -1,12 +1,67 @@
 import collections
 import random
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Counter, Dict, List, Optional, Tuple, Union
+from typing import (Any, Dict, Iterable, List, NamedTuple, Optional, Tuple,
+                    Union)
 
-from nltk.tokenize import word_tokenize
+import numpy as np
 
 from .utils import DataIO
+
+
+class GoldIds(NamedTuple):
+    task_id: int
+    ids: np.ndarray
+    dist: np.ndarray
+
+    def size(self) -> int:
+        return self.ids.size
+
+    def mindist(self) -> float:
+        return self.dist.min().item()
+
+    def maxdist(self) -> float:
+        return self.dist.max().item()
+
+    def __repr__(self):
+        return '{}(task_id: {}, size: {}, mindist: {}, maxdist: {})'.format(
+            self.__class__.__name__, self.task_id, self.size(),
+            round(self.mindist(), 4), round(self.maxdist(), 4),
+        )
+
+
+class GoldIdsOutput(List[GoldIds]):
+    pids: Optional[List[int]] = None
+
+    @property
+    def num_tasks(self) -> int:
+        return len(self)
+
+    def common(self, topk=10) -> List[Tuple[int, int]]:
+        counts = Counter(self.sample())
+        if topk == -1:
+            return counts.most_common()
+        return counts.most_common()[:topk]
+
+    def sizes(self) -> List[int]:
+        return [gold.size() for gold in self]
+
+    def sample(self) -> Iterable[int]:
+        for gold in self:
+            for pid in gold.ids:
+                yield pid.item()
+
+    def iterall(self) -> Iterable[Tuple[int, np.int64, np.float32]]:
+        for gold in self:
+            for pid, dist in zip(gold.ids, gold.dist):
+                yield gold.task_id, pid, dist
+
+    def __repr__(self):
+        return '{}(num_tasks: {}, size: {})'.format(
+            self.__class__.__name__, len(self), tuple(self.sizes()),
+        )
 
 
 @dataclass
@@ -152,7 +207,7 @@ class Papers:
             'text_keys': cord19.text_keys,
             'index_start': cord19.index_start,
             'sort_first': cord19.is_files_sorted,
-            'nlp_model': cord19.sentence_tokenizer.nlp_model,
+            'nlp_model': cord19.sentencizer.nlp_model,
         }
 
     def init_cord19_dataset(self):
@@ -164,30 +219,35 @@ class Papers:
         from .dataset import CORD19Dataset
         return CORD19Dataset(**self.init_args)
 
-    def index_select(self, ids, reverse=False, shuffle=False):
-        if hasattr(ids, 'sample'):
-            ids = list(ids.sample())
+    def index_select(self, ids, reverse=False, shuffle=False) -> Iterable[str]:
+        child_ids = None
+        # filter unique ids (as we dont want to iterate a pid more than once).
+        if isinstance(ids, GoldIdsOutput):
+            if ids.pids is not None:
+                child_ids = ids.pids
+            else:
+                child_ids = [i for i, _ in ids.common(topk=-1)]
+        else:
+            common = []
+            for i in ids:
+                if i in common:
+                    continue
+                common.append(i)
+            child_ids = common
 
-        child_ids = [pid for pid, _ in Counter(ids).most_common()]
-        if reverse:
-            child_ids.sort(reverse=True)
-        elif shuffle:
-            random.shuffle(child_ids)
+        def selected(cache_ids: List[int]):
+            for pid in cache_ids:
+                for sent in self.cluster[pid]:
+                    yield sent
 
-        select = Sentences(child_ids)
-        children = select.init_cluster()
-        for parent in select.indices:
-            for sentence in self.cluster[parent]:
-                seqlen = len(word_tokenize(sentence))
-                select.seqlen += seqlen
-                select.counts += 1
-                select.maxlen = max(select.maxlen, seqlen)
-                children[parent].append(sentence)
-
-        papers = Papers(select, children)
-        if self.init_args is not None:
-            papers.init_args = self.init_args
-        return papers
+        if child_ids is not None:
+            if reverse:
+                child_ids.sort(reverse=True)
+            if shuffle:
+                random.shuffle(child_ids)
+            iter_selected = selected(child_ids)
+            return iter_selected
+        return None
 
     def __len__(self) -> int:
         return self.num_sents
