@@ -1,9 +1,32 @@
 import json
 import random
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Union
 
 import numpy as np
+
+
+def fit_index_ivf_hnsw(
+    embedding: np.array,
+    metric: Union[str, int, "faiss.METRIC"] = "l2",
+    m: int = 32
+) -> "faiss.IndexIVFFlat":
+    import faiss
+    if isinstance(metric, str):
+        if metric.lower().strip() == "l1":
+            metric = faiss.METRIC_L1
+        elif metric.lower().strip() == "l2":
+            metric = faiss.METRIC_L2
+    assert isinstance(metric, int)
+    n, d = embedding.shape
+    nlist = int(np.sqrt(n))
+    quantizer = faiss.IndexHNSWFlat(d, m)
+    index_ivf = faiss.IndexIVFFlat(quantizer, d, nlist, metric)
+    index_ivf.verbose = True
+    index_ivf.train(embedding)
+    index_ivf.add(embedding)
+    assert index_ivf.ntotal == embedding.shape[0]
+    return index_ivf
 
 
 class PaperIndexer:
@@ -13,8 +36,10 @@ class PaperIndexer:
         self.index_start = index_start
         self.extension = extension
         self.is_files_sorted = sort_first
+        self.first_index: int = 0
+        self.last_index: int = 0
         self._bins: List[int] = []
-        self._splits: Optional[List[int]] = None
+        self._splits: List[int] = []
         self.paths: List[Path] = []
         self.paper_index: Dict[str, int] = {}
         self.index_paper: Dict[int, str] = {}
@@ -35,9 +60,11 @@ class PaperIndexer:
 
         self._map_files_to_ids(file_paths)
         if len(self._bins) > 1:
-            x = self._bins.copy()
+            x = self._bins
             x[0] += self.index_start - 1
             self._splits = np.array(x).cumsum(0).tolist()
+        else:
+            self._splits = self._bins
         del file_paths
 
     def _map_files_to_ids(self, json_files: List[str]) -> None:
@@ -48,9 +75,55 @@ class PaperIndexer:
                 self.index_paper[index] = paper_id
 
         ids = self.index_paper.keys()
-        setattr(self, "first_index", min(ids))
-        setattr(self, 'last_index', max(ids))
+        self.first_index = min(ids)
+        self.last_index = max(ids)
         del ids
+
+    def _index_dirpath(self, index: int) -> Union[Path, None]:
+        # lower bound if one source or index is less or equal to the first item.
+        if len(self._bins) == 1 or index <= self._splits[0]:
+            return self.paths[0]
+
+        # Interpolation search - searche for the correct path for a given index
+        # by returning the id to path closest to its maximum split size. A split
+        # is based on the cumulative sum of each bin (a bin is the number of files
+        # in n directory), after the first item value.
+        def nearest_mid(start: int, end: int, x: List[int], y: int) -> int:
+            m = start + ((end - start) // (x[end] - x[start])) * (y - x[start])
+            return m
+
+        splits = self._splits
+        size = len(splits) - 1
+        first = 0
+        last = size
+        while first <= last:
+            mid = nearest_mid(first, last, x=splits, y=index)
+            if mid > last or mid < first:
+                return None
+            if splits[mid] >= index:
+                return self.paths[mid]
+            elif index > splits[last - 1] and index <= self.last_index:
+                return self.paths[splits.index(self.last_index)]
+            if index > splits[mid]:
+                first = mid + 1
+            else:
+                last = mid - 1
+        if first > last:
+            return None
+
+    def _load_data(self, paper_id: str) -> Dict[str, Any]:
+        path = self._index_dirpath(self.paper_index[paper_id])
+        file_path = path.joinpath(f"{paper_id}{self.extension}")
+        with file_path.open("rb") as file:
+            return json.load(file)
+
+    def _encode(self, paper_ids: List[str]) -> List[int]:
+        pid2idx = self.paper_index
+        return [pid2idx[pid] for pid in paper_ids if pid in pid2idx]
+
+    def _decode(self, indices: List[int]) -> List[str]:
+        idx2pid = self.index_paper
+        return [idx2pid[idx] for idx in indices if idx in idx2pid]
 
     @property
     def num_papers(self) -> int:
@@ -93,55 +166,6 @@ class PaperIndexer:
             if s > 0:
                 return list(range(splits[s - 1] + 1, splits[s] + 1))
 
-    def _index_dirpath(self, index: int) -> Path:
-        # return lower bound if one source or index is less or equal to the
-        # first item.
-        if len(self._bins) == 1 or index <= self._splits[0]:
-            return self.paths[0]
-
-        # Interpolation search - searche for the correct path for a given index
-        # by returning the id to path closest to its maximum split size. A
-        # split is based on the cumulative sum of each bin (a bin is the
-        # number of files in n directory), after the first item value.
-
-        def nearest_mid(start: int, end: int, x: List[int], y: int) -> int:
-            m = start + ((end - start) // (x[end] - x[start])) * (y - x[start])
-            return m
-
-        splits = self._splits
-        size = len(splits) - 1
-        first = 0
-        last = size
-
-        while first <= last:
-            mid = nearest_mid(first, last, x=splits, y=index)
-            if mid > last or mid < first:
-                return None
-            if splits[mid] >= index:
-                return self.paths[mid]
-            elif index > splits[last - 1] and index <= self.last_index:
-                return self.paths[splits.index(self.last_index)]
-            if index > splits[mid]:
-                first = mid + 1
-            else:
-                last = mid - 1
-        if first > last:
-            return None
-
-    def _load_data(self, paper_id: str) -> Dict[str, Any]:
-        path = self._index_dirpath(self.paper_index[paper_id])
-        file_path = path.joinpath(f"{paper_id}{self.extension}")
-        with file_path.open("rb") as file:
-            return json.load(file)
-
-    def _encode(self, paper_ids: List[str]) -> List[int]:
-        pid2idx = self.paper_index
-        return [pid2idx[pid] for pid in paper_ids if pid in pid2idx]
-
-    def _decode(self, indices: List[int]) -> List[str]:
-        idx2pid = self.index_paper
-        return [idx2pid[idx] for idx in indices if idx in idx2pid]
-
     def load_paper(self, index: int = None,
                    paper_id: str = None) -> Dict[str, Any]:
         """Load a single paper and data by either index or paper ID."""
@@ -175,29 +199,9 @@ class PaperIndexer:
         return self.num_papers
 
     def __repr__(self):
-        return "PaperIndexer(papers={}, files_sorted={}, source={})".format(
-            self.num_papers, self.is_files_sorted, self.source_name)
-
-
-def fit_index_ivf_hnsw(
-    embedding: np.array,
-    metric: Union[str, int, "faiss.METRIC"] = "l2",
-    m: int = 32,
-) -> "faiss.IndexIVFFlat":
-    import faiss
-    if isinstance(metric, str):
-        if metric.lower().strip() == "l1":
-            metric = faiss.METRIC_L1
-        elif metric.lower().strip() == "l2":
-            metric = faiss.METRIC_L2
-    assert isinstance(metric, int)
-
-    n, d = embedding.shape
-    nlist = int(np.sqrt(n))
-    quantizer = faiss.IndexHNSWFlat(d, m)
-    index_ivf = faiss.IndexIVFFlat(quantizer, d, nlist, metric)
-    index_ivf.verbose = True
-    index_ivf.train(embedding)
-    index_ivf.add(embedding)
-    assert index_ivf.ntotal == embedding.shape[0]
-    return index_ivf
+        multi_src = "[\n  {},\n]"  # Template for a list of sources.
+        src = self.source_name if isinstance(self.source_name, str) \
+            else multi_src.format(', '.join(self.source_name))
+        return "{}(papers: {}, files_sorted: {}, source: {})".format(
+            self.__class__.__name__, self.num_papers, self.is_files_sorted, src,
+        )

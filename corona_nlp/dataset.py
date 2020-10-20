@@ -24,16 +24,32 @@ class CORD19Dataset(PaperIndexer):
         self.text_keys = text_keys
         self.sentencizer = SpacySentenceTokenizer(nlp_model, **kwargs)
 
+    def doc(self, index=None, paper_id=None) -> str:
+        """Return the full text document for a single ID.
+
+        * This method is intended to be used for a single doc/id, for
+          more than one; use `self.docs()` or `self.lines()` methods.
+
+        :param index: An integer or a list of integers.
+        :param paper_id: A string or list of string sequences.
+        """
+        if index is not None:
+            index = [index] if isinstance(index, int) else index
+        elif paper_id is not None:
+            index = [self[paper_id]] if isinstance(paper_id, str) else paper_id
+        assert isinstance(index, list), f'Expected a `List`, not {type(index)}'
+        return next(self.docs(index))
+
     def title(self, index: int = None, paper_id: str = None) -> str:
         return self.load_paper(index, paper_id)["metadata"]["title"]
 
     def titles(self, indices: List[int] = None,
-               paper_ids: List[str] = None) -> Iterator:
+               paper_ids: List[str] = None) -> Iterator[str]:
         for paper in self.load_papers(indices, paper_ids):
             yield paper["metadata"]["title"]
 
     def docs(self, indices: List[int] = None,
-             paper_ids: List[str] = None, suffix="\n") -> Iterator:
+             paper_ids: List[str] = None, suffix="\n") -> Iterator[str]:
         for paper in self.load_papers(indices, paper_ids):
             doc = []
             for key in self.text_keys:
@@ -42,7 +58,7 @@ class CORD19Dataset(PaperIndexer):
             yield suffix.join(doc)
 
     def lines(self, indices: List[int] = None,
-              paper_ids: List[str] = None) -> Iterator:
+              paper_ids: List[str] = None) -> Iterator[str]:
         for paper in self.load_papers(indices, paper_ids):
             for key in self.text_keys:
                 for line in paper[key]:
@@ -108,11 +124,3 @@ class CORD19Dataset(PaperIndexer):
         papers = merge_papers(batch_)
         papers.attach_init_args(self)
         return papers
-
-    def __repr__(self):
-        multi_src = "[\n  {},\n]"  # Template for a list of sources.
-        src = self.source_name if isinstance(self.source_name, str) \
-            else multi_src.format(', '.join(self.source_name))
-        return "{}(papers: {}, files_sorted: {}, source: {})".format(
-            self.__class__.__name__, self.num_papers, self.is_files_sorted, src,
-        )
