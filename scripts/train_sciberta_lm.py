@@ -82,7 +82,7 @@ def new_cord19_dataset(out_file: Path) -> Tuple[CORD19Dataset, Papers]:
         index_start=1,
         sort_first=True,
         nlp_model="en_core_sci_sm",
-        text_keys=("body_text",),
+        text_key="body_text",
     )
     sample = dataset.sample(NUM_PAPERS)
     papers = dataset.batch(sample, minlen=25)

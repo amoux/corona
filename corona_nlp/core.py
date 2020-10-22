@@ -8,7 +8,7 @@ from typing import (Any, Dict, Iterable, List, NamedTuple, Optional, Tuple,
 
 import numpy as np
 
-from .utils import DataIO
+from .utils import DataIO, get_all_store_paths, load_store, save_stores
 
 
 class GoldIds(NamedTuple):
@@ -181,14 +181,36 @@ class Papers:
         """Retrive all sentences belonging to the given paper ID."""
         return self.cluster[paper_id]
 
-    def to_disk(self, path: str):
+    def to_disk(self, path: Optional[str] = None, store_name: Optional[str] = None):
         """Save the current state to a directory."""
-        DataIO.save_data(path, self)
+        if store_name is not None:
+            if isinstance(store_name, str):
+                save_stores(sents=self, store_name=store_name)
+            else:
+                save_stores(sents=self)
+        elif path is not None:
+            DataIO.save_data(path, self)
 
     @staticmethod
-    def from_disk(path: str) -> 'Papers':
-        """Load the state from a directory."""
-        return DataIO.load_data(path)
+    def from_disk(path_or_store_name: Optional[str] = None) -> 'Papers':
+        """Load the state from a directory.
+
+        :param path_or_store_name: A custom path to the file saved using
+            the method; `self.to_disk("my/path/to/filename.pkl")` or a
+            store-name with the format; `YY-MM-DD` | `20-10-12` - if saved
+            without adding a custom-name to the store. Otherwise, pass the
+            name of the store you assigned, e.g., `my_store.` If None, then
+            the last saved will be loaded automatically if possible (whether
+            it was saved automatically with a date or given a custom name).
+        """
+        if path_or_store_name is None:
+            return load_store('sents')
+        elif isinstance(path_or_store_name, str):
+            store_names = get_all_store_paths()
+            if path_or_store_name in store_names:
+                return load_store('sents', store_name=path_or_store_name)
+            else:
+                return DataIO.load_data(path_or_store_name)
 
     def attach_init_args(self, cord19) -> None:
         """Attach initialization keyword arguments to self (Papers instance).
@@ -204,7 +226,7 @@ class Papers:
 
         self.init_args = {
             'source': source,
-            'text_keys': cord19.text_keys,
+            'text_key': cord19.text_key,
             'index_start': cord19.index_start,
             'sort_first': cord19.is_files_sorted,
             'nlp_model': cord19.sentencizer.nlp_model,

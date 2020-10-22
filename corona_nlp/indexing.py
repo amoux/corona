@@ -1,7 +1,7 @@
 import json
 import random
 from pathlib import Path
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 
@@ -9,7 +9,8 @@ import numpy as np
 def fit_index_ivf_hnsw(
     embedding: np.array,
     metric: Union[str, int, "faiss.METRIC"] = "l2",
-    m: int = 32
+    nlist: Optional[int] = None,
+    m: int = 32,
 ) -> "faiss.IndexIVFFlat":
     import faiss
     if isinstance(metric, str):
@@ -18,8 +19,10 @@ def fit_index_ivf_hnsw(
         elif metric.lower().strip() == "l2":
             metric = faiss.METRIC_L2
     assert isinstance(metric, int)
+
     n, d = embedding.shape
-    nlist = int(np.sqrt(n))
+    if nlist is None:
+        nlist = int(np.sqrt(n))
     quantizer = faiss.IndexHNSWFlat(d, m)
     index_ivf = faiss.IndexIVFFlat(quantizer, d, nlist, metric)
     index_ivf.verbose = True

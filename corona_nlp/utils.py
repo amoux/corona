@@ -1,5 +1,9 @@
+import os
 import pickle
 import re
+import sys
+from datetime import datetime
+from os.path import join
 from pathlib import Path
 from string import punctuation
 from typing import IO, Any, Dict, List, Optional, Tuple, TypeVar, Union
@@ -21,6 +25,14 @@ GRADIENTS = {
     'river': ['#43cea2', '#185a9d'],
     'celestial': ['#c33764', '#1d2671'],
     'royal': ['#141e30', '#243b55']
+}
+
+CACHE_APPNAME = 'corona_nlp'
+CACHE_STORE_NAME = 'store'
+STORE_FILE_NAMES = {
+    'sents': 'sents.pkl',
+    'embed': 'embed.npy',
+    'index': 'index.bin'
 }
 
 
@@ -181,3 +193,114 @@ def render_output(
 
     displacy.render([docs], style=style, page=page, minify=minify,
                     jupyter=jupyter, options=options, manual=manual)
+
+
+def user_cache_dir(appname: Optional[str] = None, version: Optional[str] = None):
+    """Return full path to the user-specific cache directory.
+    User cache directories for MacOS, and Linux (current OS's only):
+        MacOS:  ~/Library/Caches/<AppName>
+        Linux:  ~/.cache/<AppName> (XDG default)
+    """
+    dirpath = ''
+    system = sys.platform
+    if system == 'darwin':
+        dirpath = os.path.expanduser('~/Library/Caches/')
+        if appname:
+            dirpath = os.path.join(dirpath, appname)
+    elif system == 'linux':
+        dirpath = os.getenv('XDG_CACHE_HOME', os.path.expanduser('~/.cache'))
+        if appname:
+            dirpath = os.path.join(dirpath, appname)
+    if appname and version:
+        dirpath = os.path.join(dirpath, version)
+    return dirpath
+
+
+def get_store_dir():
+    cache_dir = Path(user_cache_dir(CACHE_APPNAME))
+    store_path = cache_dir.joinpath(CACHE_STORE_NAME)
+    return store_path
+
+
+def get_all_store_paths() -> Dict[str, Path]:
+    store_path = get_store_dir()
+    return {p.name: p for p in store_path.iterdir() if p.is_dir()}
+
+
+def delete_store(store_name: str) -> None:
+    store_map = get_all_store_paths()
+    if store_name in store_map:
+        store_dir = store_map[store_name]
+        for file in STORE_FILE_NAMES.values():
+            fp = store_dir.joinpath(file)
+            if not fp.is_file():
+                continue
+            fp.unlink()
+        # Remove directory after deleting all files.
+        store_dir.rmdir()
+    else:
+        raise ValueError(
+            "The store-name does not exists or name is invalid"
+            f" Found the following stores {store_map.items()}"
+        )
+
+
+def setup_user_dir(appname='corona_nlp', version: str = None) -> str:
+    path = Path(user_cache_dir(appname, version=version))
+    store_dir = path.joinpath(CACHE_STORE_NAME)
+    if not store_dir.exists() or not store_dir.is_dir():
+        store_dir.mkdir(parents=True)
+    return store_dir.as_posix()
+
+
+def cache_user_data(filename: str, dirname=None, override=False):
+    cache_dir = Path(setup_user_dir(CACHE_APPNAME))
+    dirpath = cache_dir.joinpath(dirname)
+    if not dirpath.exists() or not dirpath.is_dir():
+        dirpath.mkdir(parents=True, exist_ok=override)
+    filepath = dirpath.joinpath(filename).as_posix()
+    return filepath
+
+
+def save_stores(sents=None, embed=None, index=None, store_name=None, override=False):
+    if store_name is None:
+        store_name = datetime.now().strftime('%Y-%m-%d')
+    if sents is not None:
+        assert hasattr(sents, 'to_disk')
+        path = cache_user_data(STORE_FILE_NAMES['sents'], store_name, override)
+        sents.to_disk(path)
+    if embed is not None:
+        assert isinstance(embed, np.ndarray)
+        path = cache_user_data(STORE_FILE_NAMES['embed'], store_name, override)
+        np.save(path, embed)
+    if index is not None:
+        import faiss
+        assert isinstance(index, faiss.Index)
+        path = cache_user_data(STORE_FILE_NAMES['index'], store_name, override)
+        faiss.write_index(index, path)
+
+
+def load_store(type_store: str, store_name: str = None) -> Any:
+    store_path = get_store_dir()
+    if store_name is None:
+        accessed_logs = {
+            p.lstat().st_atime: p.name for p in store_path.iterdir()
+            if p.is_dir()
+        }
+        last_accessed_dir = accessed_logs[max(accessed_logs.keys())]
+        store_name = last_accessed_dir
+
+    cache_dir = store_path.joinpath(store_name)
+    if type_store == 'sents':
+        path = cache_dir.joinpath(STORE_FILE_NAMES['sents'])
+        assert path.is_file()
+        return DataIO.load_data(path.as_posix())
+    if type_store == 'embed':
+        path = cache_dir.joinpath(STORE_FILE_NAMES['embed'])
+        assert path.is_file()
+        return np.load(path.as_posix())
+    if type_store == 'index':
+        path = cache_dir.joinpath(STORE_FILE_NAMES['index'])
+        assert path.is_file()
+        import faiss
+        return faiss.read_index(path.as_posix())

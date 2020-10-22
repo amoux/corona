@@ -11,18 +11,37 @@ from .utils import clean_tokenization, normalize_whitespace
 
 
 class CORD19Dataset(PaperIndexer):
+    all_text_keys = ["abstract", "body_text"]
+
     def __init__(
             self,
             source: Union[str, List[str]],
-            text_keys: Tuple[str, ...] = ("abstract", "body_text",),
+            text_key: str = "body_text",
             index_start: int = 1,
             sort_first: bool = False,
             nlp_model: str = "en_core_web_sm",
             **kwargs,
     ):
+        """CORD19-Dataset object.
+
+        :param text_key: A string key to extract texts from each file
+            in the dataset following: `body_text, abstract`.
+        """
         super(CORD19Dataset, self).__init__(source, index_start, sort_first)
-        self.text_keys = text_keys
+        self.text_key = text_key
         self.sentencizer = SpacySentenceTokenizer(nlp_model, **kwargs)
+        self.nlp = self.sentencizer.nlp
+        self.doc_suffix = " "
+
+    @property
+    def all_dataset_keys(self):
+        return self.load_paper(self._splits[0]).keys()
+
+    @staticmethod
+    def prep(text: str) -> str:
+        text = normalize_whitespace(text)
+        text = clean_tokenization(text)
+        return text
 
     def doc(self, index=None, paper_id=None) -> str:
         """Return the full text document for a single ID.
@@ -43,59 +62,55 @@ class CORD19Dataset(PaperIndexer):
     def title(self, index: int = None, paper_id: str = None) -> str:
         return self.load_paper(index, paper_id)["metadata"]["title"]
 
-    def titles(self, indices: List[int] = None,
-               paper_ids: List[str] = None) -> Iterator[str]:
+    def titles(self, indices: List[int] = None, paper_ids: List[str] = None,
+               ) -> Iterator[str]:
         for paper in self.load_papers(indices, paper_ids):
             yield paper["metadata"]["title"]
 
-    def docs(self, indices: List[int] = None,
-             paper_ids: List[str] = None, suffix="\n") -> Iterator[str]:
+    def docs(self, indices: List[int] = None, paper_ids: List[str] = None,
+             ) -> Iterator[str]:
+        """Chain a list of ids and return a full doc per id, until exhausted."""
+        suffix = self.doc_suffix.join
         for paper in self.load_papers(indices, paper_ids):
-            doc = []
-            for key in self.text_keys:
-                for line in paper[key]:
-                    doc.append(line["text"])
-            yield suffix.join(doc)
+            lines = []
+            for line in paper[self.text_key]:
+                text = self.prep(line["text"])
+                lines.append(text)
+            yield suffix(lines)
 
-    def lines(self, indices: List[int] = None,
-              paper_ids: List[str] = None) -> Iterator[str]:
+    def lines(self, indices: List[int] = None, paper_ids: List[str] = None,
+              ) -> Iterator[str]:
+        """Chain a list of ids and return texts line-by-line, until exhausted."""
         for paper in self.load_papers(indices, paper_ids):
-            for key in self.text_keys:
-                for line in paper[key]:
-                    yield line["text"]
+            for line in paper[self.text_key]:
+                text = self.prep(line["text"])
+                yield text
 
     def build(self, indices: List[int], minlen: int = 15) -> Papers:
         """Return an instance of papers with texts transformed to sentences."""
         idx = Sentences(indices)
-        docs = self.docs(indices)
+        docs = self.docs(indices, paper_ids=None)
         tokenize = self.sentencizer
         is_sentence = self.sentencizer.is_sentence
 
-        def pipeline() -> Iterable:
-            text = next(docs)
-            text = normalize_whitespace(text)
-            text = clean_tokenization(text)
-            sent_spans = tokenize(text)
-            return sent_spans
-
         papers = idx.init_cluster()
         for pid in papers:
-            for sent in pipeline():
+            for sent in tokenize(next(docs)):
                 if sent.text in papers[pid]:
                     continue
-                length = len(sent)
-                if length < minlen:
+                seqlen = len(sent)
+                if seqlen < minlen:
                     continue
                 if not is_sentence(sent):
                     continue
-                idx.seqlen += length
+                idx.seqlen += seqlen
                 idx.counts += 1
-                idx.maxlen = max(idx.maxlen, length)
+                idx.maxlen = max(idx.maxlen, seqlen)
                 papers[pid].append(sent.text)
 
         return Papers(idx, cluster=papers)
 
-    def batch(self, indices: List[int], minlen=15, workers=None) -> Papers:
+    def batch(self, indices: List[int], minlen=15, workers: int = None) -> Papers:
         maxsize = len(indices)
         workers = cpu_count() if workers is None else workers
 
@@ -108,7 +123,7 @@ class CORD19Dataset(PaperIndexer):
             batch_: List[Papers] = []
             with concurrent.futures.ThreadPoolExecutor(workers) as pool:
                 future_to_ids = {
-                    pool.submit(self.build, job, minlen): job for job in jobs
+                    pool.submit(self.build, pids, minlen): pids for pids in jobs
                 }
                 for future in concurrent.futures.as_completed(future_to_ids):
                     ids = future_to_ids[future]
