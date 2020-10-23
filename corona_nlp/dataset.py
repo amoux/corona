@@ -1,6 +1,6 @@
 import concurrent.futures
 from multiprocessing import cpu_count
-from typing import Iterable, Iterator, List, Tuple, Union
+from typing import Iterator, List, Union
 
 from tqdm.auto import tqdm
 
@@ -19,7 +19,7 @@ class CORD19Dataset(PaperIndexer):
             text_key: str = "body_text",
             index_start: int = 1,
             sort_first: bool = False,
-            nlp_model: str = "en_core_web_sm",
+            nlp_model: str = "en_core_sci_sm",
             **kwargs,
     ):
         """CORD19-Dataset object.

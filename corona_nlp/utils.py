@@ -3,10 +3,9 @@ import pickle
 import re
 import sys
 from datetime import datetime
-from os.path import join
 from pathlib import Path
 from string import punctuation
-from typing import IO, Any, Dict, List, Optional, Tuple, TypeVar, Union
+from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union
 
 import numpy as np
 from nltk.tokenize import word_tokenize

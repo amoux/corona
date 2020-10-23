@@ -8,7 +8,7 @@ from transformers import AutoModel, AutoTokenizer
 
 
 @dataclass
-class SummarizerArguments:
+class BertSummarizerConfig:
     model: Optional[str] = None
     custom_model: Optional[AutoModel] = None
     custom_tokenizer: Optional[AutoTokenizer] = None
@@ -16,6 +16,28 @@ class SummarizerArguments:
     reduce_option: str = 'mean'
     sentence_handler: Optional[SentenceHandler] = None
     random_state: int = 12345
+
+    def todict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class BertSummarizerArguments:
+    """Default arguments for Bert Extractive Summarizer.
+    https://github.com/dmmiller612/bert-extractive-summarizer
+
+    :param body: Text of strings / input to summarize.
+    :param ratio: Ratio of sentences to summarize to from the original body.
+    :param min_length: Minimum sequence length to accept as a sentence.
+    :param max_length: Maximum sequence length to accept as a sentence.
+    :param algorithm: Clustering algorithm: `kmeans` (default) or `gmm`.
+    """
+    body: Optional[str] = None
+    ratio: float = 0.2
+    min_length: int = 40
+    max_length: int = 600
+    use_first: bool = True
+    algorithm: str = 'kmeans'
 
     def todict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -89,7 +111,7 @@ class BertSummarizer(SingleModel):
         if sentence_handler is None:
             sentence_handler = SentenceHandler()
 
-        kwargs = SummarizerArguments(
+        kwargs = BertSummarizerConfig(
             # The API enforced this (We simply ignore it)
             model='bert-base-uncased',
             custom_model=model,

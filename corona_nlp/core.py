@@ -106,6 +106,18 @@ class Papers:
             for j in range(0, len(self.cluster[i])):
                 yield (i, j)
 
+    def decode(self, sent_ids: Union[int, List[int]]):
+        """Decode an single or an iterable of sentence-ids to paper-ids."""
+        if isinstance(sent_ids, int):
+            pid, _ = self._meta[sent_ids]
+            return pid
+        else:
+            paper_ids: List[int] = []
+            for sid in sent_ids:
+                pid, _ = self._meta[sid]
+                paper_ids.append(pid)
+            return paper_ids
+
     def string(self, sent_id: int) -> str:
         """Retrive a single string from a sentence ID.
         * Same as `self[sent_id]`
