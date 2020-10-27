@@ -2,7 +2,7 @@ from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Optional, Union
 
 import spacy
-from summarizer import SingleModel
+from summarizer.model_processors import ModelProcessor
 from summarizer.sentence_handler import SentenceHandler
 from transformers import AutoModel, AutoTokenizer
 
@@ -83,7 +83,7 @@ def frequency_summarizer(text: Union[str, List[str]],
     return summary
 
 
-class BertSummarizer(SingleModel):
+class BertSummarizer(ModelProcessor):
     def __init__(
         self,
         model: Optional[AutoModel] = None,

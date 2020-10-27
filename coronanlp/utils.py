@@ -26,7 +26,7 @@ GRADIENTS = {
     'royal': ['#141e30', '#243b55']
 }
 
-CACHE_APPNAME = 'corona_nlp'
+CACHE_APPNAME = 'coronanlp'
 CACHE_STORE_NAME = 'store'
 STORE_FILE_NAMES = {
     'sents': 'sents.pkl',
@@ -244,7 +244,7 @@ def delete_store(store_name: str) -> None:
         )
 
 
-def setup_user_dir(appname='corona_nlp', version: str = None) -> str:
+def setup_user_dir(appname='coronanlp', version: str = None) -> str:
     path = Path(user_cache_dir(appname, version=version))
     store_dir = path.joinpath(CACHE_STORE_NAME)
     if not store_dir.exists() or not store_dir.is_dir():

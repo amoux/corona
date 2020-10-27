@@ -1,6 +1,7 @@
 import concurrent.futures
 from multiprocessing import cpu_count
-from typing import Iterator, List, Union
+from pathlib import Path
+from typing import Iterable, Iterator, List, Optional, Tuple, Union
 
 from tqdm.auto import tqdm
 
@@ -8,6 +9,61 @@ from .core import Papers, Sentences, merge_papers
 from .indexing import PaperIndexer
 from .tokenizer import SpacySentenceTokenizer
 from .utils import clean_tokenization, normalize_whitespace
+from .parser import parse
+
+
+def cache_for_tokenizer_vocab(
+        outdir: str,
+        papers: Papers,
+        ids: Optional[List[int]] = None,
+        suffix: str = '\n') -> List[str]:
+    paths = []
+    if ids is None:
+        ids = papers.indices
+    outdir = Path(outdir)
+    if not outdir.exists():
+        outdir.mkdir(parents=True)
+    for pid in tqdm(ids, desc='train-files'):
+        fp = outdir.joinpath(f'{pid}.txt')
+        with fp.open('w', encoding='utf-8') as f:
+            for sent in papers.sents(pid):
+                f.write(f'{sent}{suffix}')
+        paths.append(fp.as_posix())
+    return paths
+
+
+def cache_for_language_modeling(
+        outdir: str,
+        papers: Papers,
+        train_ids: List[int],
+        test_ids: Optional[List[int]] = None,
+        suffix: str = '\n') -> Union[Tuple[Path, Path], Path, None]:
+    def is_list_of_ids(obj): return (
+        isinstance(obj, list) and isinstance(obj[0], int))
+
+    def cache(fp, iterable):
+        with fp.open('w', encoding='utf-8') as f:
+            for sent in iterable:
+                f.write(f'{sent}{suffix}')
+
+    outdir = Path(outdir)
+    if not outdir.exists():
+        outdir.mkdir(parents=True)
+    train_fp, test_fp = None, None
+
+    if is_list_of_ids(train_ids):
+        train_fp = outdir.joinpath('train.txt')
+        train_it = papers.index_select(train_ids)
+        cache(train_fp, train_it)
+
+    if test_ids is not None and is_list_of_ids(test_ids):
+        test_fp = outdir.joinpath('test.txt')
+        test_it = papers.index_select(test_ids)
+        cache(test_fp, test_it)
+
+    if all((train_fp, test_fp)):
+        return train_fp, test_fp
+    return train_fp
 
 
 class CORD19Dataset(PaperIndexer):
@@ -139,3 +195,66 @@ class CORD19Dataset(PaperIndexer):
         papers = merge_papers(batch_)
         papers.attach_init_args(self)
         return papers
+
+
+def build_wiki_like_dataset(sample: List[int],
+                            cord19: CORD19Dataset,
+                            fn: str = 'train.txt',
+                            outdir: str = 'data') -> None:
+    """Build a Wiki like dataset for language modeling, e.g., GTP/GPT2.
+
+    NOTE: This function should be used for fine-tuning and not for training
+    a new tokenizer. New tokenizer require file splits not single files.
+
+    - Removes (The following tags are removed, since generative models like
+    GPT2 will << generate >> similar for every output, which we dont want 🤗):
+      - `cite-spans`, e.g., `"[1]"`
+      - `ref-spans`, e.g., `"Figure 3C"`
+
+    Example usage:
+    ```python
+    sample = cord19.sample(-1)
+    train_ids, test_ids = coronanlp.split_dataset(sample, subset=0.9)
+    build_wiki_like_dataset(train_ids, cord19, fn='train.txt')
+    build_wiki_like_dataset(test_ids, cord19, fn='test.txt')
+    ```
+    """
+    BODY = "\n {} \n"
+    HEADER = "\n = = {} = = \n"
+    SECTION_BODY = "\n = = = {} = = = \n\n {}\n"
+
+    outdir = Path(outdir)
+    if not outdir.exists():
+        outdir.mkdir(parents=True)
+
+    fp = outdir.joinpath(fn)
+    with fp.open('w', encoding='utf-8') as file:
+        done = 0
+        maxsize = len(sample)
+        iter_sample = iter(sample)
+        while done < maxsize:
+            pid = next(iter_sample)
+            paper = parse(pid, cord19.load_paper(pid))
+            title = paper.title
+            if title:
+                header = HEADER.format(title)
+                file.write(header)
+            for body in paper:
+                text = body.text
+                for cite in body.cite_spans:
+                    cite_text = cite.text
+                    if cite_text:
+                        text = text.replace(cite_text, '')
+                for ref in body.ref_spans:
+                    ref_text = ref.text
+                    if ref_text:
+                        text = text.replace(ref_text, '')
+                text = normalize_whitespace(text)
+                text = clean_tokenization(text)
+                section = body.section
+                if section:
+                    text = SECTION_BODY.format(section, text)
+                else:
+                    text = BODY.format(text)
+                file.write(text)
+            done += 1

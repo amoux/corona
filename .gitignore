@@ -3,3 +3,8 @@
 /.src*
 /models*
 .vscode/settings.json
+site/
+docs/
+MANIFEST.in
+mkdocs.yml
+

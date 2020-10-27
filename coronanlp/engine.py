@@ -51,6 +51,12 @@ class QuestionAnsweringOutput(List[ModelOutput]):
     ids: Optional[np.ndarray] = None
     dist: Optional[np.ndarray] = None
 
+    @property
+    def shape(self) -> Union[Tuple[int, int], None]:
+        if self.ids is not None:
+            return self.ids.shape
+        return None
+
     def attach_(self, *inputs) -> None:
         q, c, self.ids, self.dist = inputs
         self.q = q[0] if len(q) == 1 else q
@@ -60,11 +66,6 @@ class QuestionAnsweringOutput(List[ModelOutput]):
         items = [self.pop(i) for i, o in enumerate(self) if not o.answer]
         if items:
             return items
-        return None
-
-    def shape(self) -> Union[Tuple[int, int], None]:
-        if self.ids is not None:
-            return self.ids.shape
         return None
 
     def spans(self) -> List[Tuple[int, int]]:
@@ -121,7 +122,7 @@ class ScibertQuestionAnswering:
             the encoding layer `(mean, median, max)`. In other words it
             determines how you want to reduce results.
         :param summarizer_kwargs: Kwargs to pass to the summarizer
-            along w/input texts. Or with a `corona_nlp.summarization.
+            along w/input texts. Or with a `coronanlp.summarization.
             BertSummarizerArguments` instance. (These arguments can be
             overridden anytime). By either updating the properties in
             place e.g., `self.summarizer_kwargs.ratio=0.5`. Note that
@@ -150,7 +151,8 @@ class ScibertQuestionAnswering:
         if do_lower_case is None:
             do_lower_case = self.do_lower_case
         if model is None or isinstance(model, str):
-            self.model = BertForQuestionAnswering.from_pretrained(model_name_or_path)
+            self.model = BertForQuestionAnswering.from_pretrained(
+                model_name_or_path)
         elif isinstance(model, BertForQuestionAnswering):
             self.model = model
         else:
@@ -175,7 +177,8 @@ class ScibertQuestionAnswering:
             self.model, self.tokenizer, device=device_index,
         )
         if isinstance(summarizer_kwargs, dict):
-            self.summarizer_kwargs = BertSummarizerArguments(**summarizer_kwargs)
+            self.summarizer_kwargs = BertSummarizerArguments(
+                **summarizer_kwargs)
         elif isinstance(summarizer_kwargs, BertSummarizerArguments):
             self.summarizer_kwargs = summarizer_kwargs
         self._freq_summarizer = frequency_summarizer

@@ -204,7 +204,7 @@ class Papers:
             DataIO.save_data(path, self)
 
     @staticmethod
-    def from_disk(path_or_store_name: Optional[str] = None) -> 'Papers':
+    def from_disk(path_or_store_name: Optional[str] = None) -> Union['Papers', None]:
         """Load the state from a directory.
 
         :param path_or_store_name: A custom path to the file saved using
@@ -217,12 +217,13 @@ class Papers:
         """
         if path_or_store_name is None:
             return load_store('sents')
-        elif isinstance(path_or_store_name, str):
+        try:
             store_names = get_all_store_paths()
-            if path_or_store_name in store_names:
-                return load_store('sents', store_name=path_or_store_name)
-            else:
-                return DataIO.load_data(path_or_store_name)
+        except FileNotFoundError:
+            return DataIO.load_data(path_or_store_name)
+        if path_or_store_name in store_names:
+            return load_store('sents', path_or_store_name)
+        return None
 
     def attach_init_args(self, cord19) -> None:
         """Attach initialization keyword arguments to self (Papers instance).

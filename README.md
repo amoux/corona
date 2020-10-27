@@ -1,4 +1,4 @@
-# ⚕ corona_nlp
+# ⚕ coronanlp
 
 The current status of the project is experimental 🔬
 
@@ -9,7 +9,7 @@ The current status of the project is experimental 🔬
 Construct a `CORD19Dataset` object.  Initialize with a single path or a list paths pointing to the directory with JSON files, e.g., `/../dir/*.json`
 
 ```python
-import corona_nlp as corona
+import coronanlp as corona
 
 root = corona.Path("path/to/CORD-19-research-challenge/2020-03-13/")
 source = [p.joinpath(p.name) for p in root.iterdir() if p.is_dir()]
@@ -19,7 +19,7 @@ dataset = corona.CORD19Dataset(
     index_start=1,
     sort_first=True,
     nlp_model='en_core_sci_sm',
-    text_keys=('body_text',),
+    text_key=('body_text',),
 )
 print(dataset)
 ...
@@ -98,7 +98,7 @@ for idx, sent in enumerate(doc.sents): print(f'{idx}:\t{sent}')
 3: The effect of ... electric resistance, molecule trafficking, calcium (Ca 2+ ) homeostasis, gene expression and proliferation studies.
 ```
 
-> `corona_nlp.core.Papers.__str__` **method**
+> `coronanlp.core.Papers.__str__` **method**
 
 - Wow 🤔 `13,202` papers produce `1,890,230` million sentences and `60,847,005` million tokens! It takes about ~30 minutes with *SSD* and around ~40 on *HDD*, but it really depends on hardware.
 
@@ -117,7 +117,7 @@ embedding = encoder.encode(papers, batch_size=8)
 # batches: 96% ██████████████ | 36585/38168 [17:10<01:17, 20.38it/s]
 ```
 
-> `corona_nlp.indexing.fit_index_ivf_hnsw` **method**
+> `coronanlp.indexing.fit_index_ivf_hnsw` **method**
 
 ### NOTE
 
@@ -153,7 +153,7 @@ print(index_ivf.is_trained)
 | *encoder* | Union[str, SentenceTransformer] | A path or model object   |
 
 ```python
-from corona_nlp.engine import ScibertQuestionAnswering
+from coronanlp.engine import ScibertQuestionAnswering
 
 qa =  ScibertQuestionAnswering(papers, index_ivf, encoder)
 print(qa.all_model_devices)
