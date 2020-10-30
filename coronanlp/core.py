@@ -3,21 +3,23 @@ import random
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import (Any, Dict, Iterable, List, NamedTuple, Optional, Tuple,
-                    Union)
+from typing import Dict, Iterable, List, NamedTuple, Optional, Tuple, Union
 
-import numpy as np
+import numpy as np  # type: ignore
 
 from .utils import DataIO, get_all_store_paths, load_store, save_stores
 
+Pid = int
+Sid = int
 
-class GoldIds(NamedTuple):
+
+class GoldPids(NamedTuple):
     task_id: int
-    ids: np.ndarray
+    pids: np.ndarray
     dist: np.ndarray
 
     def size(self) -> int:
-        return self.ids.size
+        return self.pids.size
 
     def mindist(self) -> float:
         return self.dist.min().item()
@@ -32,14 +34,14 @@ class GoldIds(NamedTuple):
         )
 
 
-class GoldIdsOutput(List[GoldIds]):
-    pids: Optional[List[int]] = None
+class GoldPidsOutput(List[GoldPids]):
+    pids: Optional[List[Pid]] = None
 
     @property
     def num_tasks(self) -> int:
         return len(self)
 
-    def common(self, topk=10) -> List[Tuple[int, int]]:
+    def common(self, topk=10) -> List[Tuple[Pid, int]]:
         counts = Counter(self.sample())
         if topk == -1:
             return counts.most_common()
@@ -48,14 +50,14 @@ class GoldIdsOutput(List[GoldIds]):
     def sizes(self) -> List[int]:
         return [gold.size() for gold in self]
 
-    def sample(self) -> Iterable[int]:
+    def sample(self) -> Iterable[Pid]:
         for gold in self:
-            for pid in gold.ids:
+            for pid in gold.pids:
                 yield pid.item()
 
     def iterall(self) -> Iterable[Tuple[int, np.int64, np.float32]]:
         for gold in self:
-            for pid, dist in zip(gold.ids, gold.dist):
+            for pid, dist in zip(gold.pids, gold.dist):
                 yield gold.task_id, pid, dist
 
     def __repr__(self):
@@ -65,77 +67,122 @@ class GoldIdsOutput(List[GoldIds]):
 
 
 @dataclass
-class Sentences:
-    indices: List[int] = field(default_factory=list, repr=False)
+class MetaData:
+    sid: int
+    pid: int
+    loc: int
+    strlen: int
+    seqlen: int
+
+
+@dataclass
+class Sampler:
+    pids: List[int] = field(default_factory=list, repr=False)
     counts: int = 0
     maxlen: int = 0
     seqlen: int = 0
+    store: Dict[Pid, List] = field(default_factory=dict, repr=False)
+    _meta: List[MetaData] = field(default_factory=list, repr=False)
 
-    def init_cluster(self) -> Dict[int, List[Any]]:
-        return dict([(index, []) for index in self.indices])
+    def init(self):
+        self.store = dict([(pid, []) for pid in self.pids])
+        return self.store
+
+    def addmeta(self, pid, *args) -> None:
+        sid = self.counts
+        self._meta.append(MetaData(sid, pid, *args))
+
+    def sents(self, pid: Pid) -> List[str]:
+        return self.store[pid]
+
+    def __getitem__(self, item: Union[int, slice]):
+        meta = self._meta
+        if isinstance(item, int):
+            m = meta[item]
+            return self.store[m.pid][m.loc]
+        if isinstance(item, slice):
+            return [self.store[m.pid][m.loc] for m in meta[item]]
+
+    def __iter__(self):
+        store = self.store
+        for pid in store:
+            for sent in store[pid]:
+                yield sent
 
     def __len__(self):
         return self.counts
 
 
-@dataclass
-class Papers:
-    sentences: Sentences = field(repr=False)
-    cluster: Dict[int, List[str]] = field(repr=False)
-    avg_seqlen: float = field(init=False)
-    num_papers: int = field(init=False)
-    num_sents: int = field(init=False)
-    num_tokens: int = field(init=False)
-    _meta: List[Tuple[int, int]] = field(init=False, repr=False)
-    init_args: Optional[Dict[str, Any]] = field(
-        init=False, repr=False, default=None,
-    )
+def merge_samplers(samplers: List[Sampler]) -> Sampler:
+    """Merge a list of instances of SentenceStore into one."""
+    if isinstance(samplers, list):
+        if not isinstance(samplers[0], Sampler):
+            raise TypeError("Expected a List[Sampler], but found "
+                            f"a List[{type(samplers[0])}] instead.")
+    X = Sampler()
+    c = X.init()
+    for p in samplers:
+        X.seqlen += p.seqlen
+        X.counts += p.counts
+        X.maxlen = max(X.maxlen, p.maxlen)
+        X.pids.extend(p.pids)
+        X._meta.extend(p._meta)
+        c.update(p.store)
+    return X
 
-    def __post_init__(self):
-        if isinstance(self.sentences, Sentences):
-            for key, val in self.sentences.__dict__.items():
-                setattr(self, key, val)
+
+class SentenceStore:
+    def __init__(
+        self,
+        pids: List[Pid],
+        counts: int,
+        maxlen: int,
+        seqlen: int,
+        store: Dict[Pid, List[str]],
+        meta: List[MetaData],
+    ) -> None:
+        self.pids = pids
+        self.counts = counts
+        self.seqlen = seqlen
+        self.maxlen = maxlen
+        self._store = store
+        self._meta = meta
         self.avg_seqlen = round(self.seqlen / self.counts, 2)
-        self.num_papers = len(self.indices)
+        self.num_papers = len(self.pids)
         self.num_sents = self.counts
         self.num_tokens = self.seqlen
-        self._meta = list(self._edges())
+        self.init_args = None
 
-    def _edges(self):
-        for i in self.indices:
-            for j in range(0, len(self.cluster[i])):
-                yield (i, j)
-
-    def decode(self, sent_ids: Union[int, List[int]]):
+    def decode(self, sids: Union[Sid, List[Sid]]) -> Union[Pid, List[Pid]]:
         """Decode an single or an iterable of sentence-ids to paper-ids."""
-        if isinstance(sent_ids, int):
-            pid, _ = self._meta[sent_ids]
-            return pid
+        if isinstance(sids, Sid):
+            m = self._meta[sids]
+            return m.pid
         else:
-            paper_ids: List[int] = []
-            for sid in sent_ids:
-                pid, _ = self._meta[sid]
-                paper_ids.append(pid)
-            return paper_ids
+            pids = []
+            for sid in sids:
+                m = self._meta[sid]
+                pids.append(m.pid)
+            return pids
 
-    def string(self, sent_id: int) -> str:
+    def string(self, sid: Sid) -> str:
         """Retrive a single string from a sentence ID.
-        * Same as `self[sent_id]`
+        * Same as `self[sid]`
         """
-        pid, item = self._meta[sent_id]
-        return self.cluster[pid][item]
+        m = self._meta[sid]
+        return self._store[m.pid][m.loc]
 
-    def largest(self, topk: int = 10) -> List[Tuple[int, int]]:
+    def largest(self, topk: int = 10) -> List[Tuple[Pid, int]]:
         """Return an iterable of paper ids and their number of sentences
         for that paper id; from biggest to the smallest.
         """
-        count = collections.Counter([m[0] for m in self._meta])
+        count = collections.Counter([m.pid for m in self._meta])
         if topk == -1:
             return count.most_common()
         else:
             return count.most_common(topk)
 
-    def lookup(self, sent_ids: Union[int, List[int]], mode="inline"):
+    def lookup(self, sids: Union[Sid, List[Sid]], mode="inline"):
         """Lookup paper-ids by a single or list of sentence ids.
 
         :param mode: Data format. `inline` has index keys: `pid, sid, loc`
@@ -144,19 +191,20 @@ class Papers:
          `index` is a list of integers of paper-ids (for all sentence-ids).
 
         - modes:
-          - `inline`: List[Dict[str, Union[int, Tuple[int, ...]]]]
-          - `table` : Dict[int, List[int]]
-          - `index` : List[int]
+          - `inline`: List[Dict[str, Union[Pid, Tuple[Pid, Sid]]]]
+          - `table` : Dict[Pid, List[Sid]]
+          - `index` : List[Pid]
 
         """
         is_single_input = False
-        if isinstance(sent_ids, int):
-            sent_ids = [sent_ids]
+        if isinstance(sids, Sid):
+            sids = [sids]
             is_single_input = True
 
-        inline: Optional[List[Dict[str, Union[int, Tuple[int, ...]]]]] = None
-        table: Optional[Dict[int, List[int]]] = None
-        index: Optional[List[int]] = None
+        inline: Optional[List[Dict[str, Union[Pid, Tuple[Pid, Sid]]]]] = None
+        table: Optional[Dict[Pid, List[Sid]]] = None
+        index: Optional[List[Pid]] = None
+
         if mode == "inline":
             inline = []
         elif mode == "index":
@@ -164,21 +212,21 @@ class Papers:
         else:
             table = {}
 
-        for sent_id in sent_ids:
-            pid, item = self._meta[sent_id]
+        for sid in sids:
+            m = self._meta[sid]
             if inline is not None:
                 inline.append({
-                    "pid": pid,
-                    "sid": sent_id,
-                    "loc": (pid, item),
+                    "pid": m.pid,
+                    "sid": m.sid,
+                    "loc": (m.pid, m.loc),
                 })
             elif index is not None:
-                index.append(pid)
+                index.append(m.pid)
             elif table is not None:
-                if pid not in table:
-                    table[pid] = [sent_id]
+                if m.pid not in table:
+                    table[m.pid] = [m.loc]
                 else:
-                    table[pid].append(sent_id)
+                    table[m.pid].append(m.loc)
 
         if inline is not None:
             if is_single_input:
@@ -189,9 +237,9 @@ class Papers:
         else:
             return table
 
-    def sents(self, paper_id: int) -> List[str]:
+    def sents(self, pid: Pid) -> List[str]:
         """Retrive all sentences belonging to the given paper ID."""
-        return self.cluster[paper_id]
+        return self._store[pid]
 
     def to_disk(self, path: Optional[str] = None, store_name: Optional[str] = None):
         """Save the current state to a directory."""
@@ -204,7 +252,17 @@ class Papers:
             DataIO.save_data(path, self)
 
     @staticmethod
-    def from_disk(path_or_store_name: Optional[str] = None) -> Union['Papers', None]:
+    def from_sampler(sampler: Union[Sampler, List[Sampler]]) -> 'SentenceStore':
+        if isinstance(sampler, list):
+            sampler = merge_samplers(samplers=sampler)
+        if isinstance(sampler, Sampler):
+            return SentenceStore(
+                sampler.pids, sampler.counts, sampler.maxlen,
+                sampler.seqlen, sampler.store, sampler._meta,
+            )
+
+    @staticmethod
+    def from_disk(path_or_store_name: Optional[str] = None):
         """Load the state from a directory.
 
         :param path_or_store_name: A custom path to the file saved using
@@ -251,28 +309,28 @@ class Papers:
                 "Current `self` was not saved w/or self.attach_init_args() "
                 "hasn't been called to attach `init_args` attr this `self`."
             )
-        from .dataset import CORD19Dataset
-        return CORD19Dataset(**self.init_args)
+        from .dataset import CORD19
+        return CORD19(**self.init_args)
 
-    def index_select(self, ids, reverse=False, shuffle=False) -> Iterable[str]:
+    def index_select(self, x, reverse=False, shuffle=False) -> Iterable[str]:
         child_ids = None
         # filter unique ids (as we dont want to iterate a pid more than once).
-        if isinstance(ids, GoldIdsOutput):
-            if ids.pids is not None:
-                child_ids = ids.pids
+        if isinstance(x, GoldPidsOutput):
+            if x.pids is not None:
+                child_ids = x.pids
             else:
-                child_ids = [i for i, _ in ids.common(topk=-1)]
+                child_ids = [i for i, _ in x.common(topk=-1)]
         else:
             common = []
-            for i in ids:
-                if i in common:
+            for pid in x:
+                if pid in common:
                     continue
-                common.append(i)
+                common.append(pid)
             child_ids = common
 
-        def selected(cache_ids: List[int]):
+        def selected(cache_ids: List[Pid]):
             for pid in cache_ids:
-                for sent in self.cluster[pid]:
+                for sent in self._store[pid]:
                     yield sent
 
         if child_ids is not None:
@@ -287,35 +345,25 @@ class Papers:
     def __len__(self) -> int:
         return self.num_sents
 
-    def __contains__(self, item: int) -> bool:
-        if isinstance(item, int):
-            return item in self.cluster
+    def __contains__(self, pid: Pid) -> bool:
+        if isinstance(pid, Pid):
+            return pid in self._store
 
-    def __getitem__(self, item: int) -> Union[List[str], str]:
-        if isinstance(item, slice):
-            return [self.cluster[i[0]][i[1]] for i in self._meta[item]]
+    def __getitem__(self, item: Union[Sid, slice]) -> Union[str, List[str]]:
+        meta, store = self._meta, self._store
         if isinstance(item, int):
-            pid, item = self._meta[item]
-            return self.cluster[pid][item]
+            m = meta[item]
+            return store[m.pid][m.loc]
+        if isinstance(item, slice):
+            return [store[m.pid][m.loc] for m in meta[item]]
 
     def __iter__(self):
-        for pid in self.cluster:
-            for sent in self.cluster[pid]:
+        store = self._store
+        for pid in store:
+            for sent in store[pid]:
                 yield sent
 
-
-def merge_papers(papers: List[Papers]) -> Papers:
-    """Merge a list of instances of Papers into one."""
-    if isinstance(papers, list):
-        if not isinstance(papers[0], Papers):
-            raise TypeError("Expected a List[Papers], but found "
-                            f"a List[{type(papers[0])}] instead.")
-    i = Sentences()
-    c = i.init_cluster()
-    for p in papers:
-        i.seqlen += p.seqlen
-        i.counts += p.counts
-        i.maxlen = max(i.maxlen, p.maxlen)
-        i.indices.extend(p.indices)
-        c.update(p.cluster)
-    return Papers(i, c)
+    def __repr__(self):
+        out = '{}(avg_seqlen: {}, num_papers: {}, num_sents: {}, num_tokens: {})'
+        return out.format(self.__class__.__name__, self.avg_seqlen,
+                          self.num_papers, self.num_sents, self.num_tokens)

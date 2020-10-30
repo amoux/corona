@@ -7,12 +7,14 @@ import torch
 from transformers import (BertForQuestionAnswering, BertTokenizer,
                           QuestionAnsweringPipeline, SquadExample)
 
-from .core import Papers
-from .dataset import CORD19Dataset
+from .core import SentenceStore
+from .dataset import CORD19
 from .summarization import (BertSummarizer, BertSummarizerArguments,
                             frequency_summarizer)
 from .tokenizer import SpacySentenceTokenizer
 from .ukplab.sentence import SentenceTransformer
+
+Sid = int
 
 
 class InvalidModelNameOrPathError(ValueError):
@@ -48,17 +50,17 @@ class ModelOutput(NamedTuple):
 class QuestionAnsweringOutput(List[ModelOutput]):
     q: Optional[Union[str, List[str]]] = None
     c: Optional[Union[str, List[str]]] = None
-    ids: Optional[np.ndarray] = None
+    sids: Optional[np.ndarray] = None
     dist: Optional[np.ndarray] = None
 
     @property
     def shape(self) -> Union[Tuple[int, int], None]:
-        if self.ids is not None:
-            return self.ids.shape
+        if self.sids is not None:
+            return self.sids.shape
         return None
 
     def attach_(self, *inputs) -> None:
-        q, c, self.ids, self.dist = inputs
+        q, c, self.sids, self.dist = inputs
         self.q = q[0] if len(q) == 1 else q
         self.c = c[0] if len(c) == 1 else c
 
@@ -100,10 +102,10 @@ class ScibertQuestionAnswering:
 
     def __init__(
             self,
-            papers: Union[str, Papers],
+            papers: Union[str, SentenceStore],
             index: Union[str, faiss.IndexIVFFlat],
             encoder: Union[str, SentenceTransformer],
-            cord19: Optional[CORD19Dataset] = None,
+            cord19: Optional[CORD19] = None,
             model: Optional[BertForQuestionAnswering] = None,
             tokenizer: Optional[BertTokenizer] = None,
             model_name_or_path: Optional[str] = None,
@@ -129,10 +131,12 @@ class ScibertQuestionAnswering:
             the `body` argument can be disregarded or left as None since
             it's always overridden.
         """
-        self.papers = Papers.from_disk(papers) \
+        self.papers = SentenceStore.from_disk(papers) \
             if isinstance(papers, str) else papers
+        assert isinstance(self.papers, SentenceStore)
         self.index = faiss.read_index(index) \
             if isinstance(index, str) else index
+        assert isinstance(self.index, faiss.IndexIVFFlat)
         self.encoder = SentenceTransformer(encoder, device=encoder_device) \
             if isinstance(encoder, str) else encoder
         if cord19 is None:
@@ -140,7 +144,7 @@ class ScibertQuestionAnswering:
                 self.cord19 = self.papers.init_cord19_dataset()
                 if hasattr(self.cord19, 'sentencizer'):
                     self._sentencizer = self.cord19.sentencizer
-        elif isinstance(cord19, CORD19Dataset):
+        elif isinstance(cord19, CORD19):
             self.cord19 = cord19
             self._sentencizer = cord19.sentencizer
         else:
@@ -151,8 +155,7 @@ class ScibertQuestionAnswering:
         if do_lower_case is None:
             do_lower_case = self.do_lower_case
         if model is None or isinstance(model, str):
-            self.model = BertForQuestionAnswering.from_pretrained(
-                model_name_or_path)
+            self.model = BertForQuestionAnswering.from_pretrained(model_name_or_path)
         elif isinstance(model, BertForQuestionAnswering):
             self.model = model
         else:
@@ -177,8 +180,7 @@ class ScibertQuestionAnswering:
             self.model, self.tokenizer, device=device_index,
         )
         if isinstance(summarizer_kwargs, dict):
-            self.summarizer_kwargs = BertSummarizerArguments(
-                **summarizer_kwargs)
+            self.summarizer_kwargs = BertSummarizerArguments(**summarizer_kwargs)
         elif isinstance(summarizer_kwargs, BertSummarizerArguments):
             self.summarizer_kwargs = summarizer_kwargs
         self._freq_summarizer = frequency_summarizer
@@ -233,19 +235,19 @@ class ScibertQuestionAnswering:
         # Reduce the chance of getting similar "questions", we want sentences.
         kwargs.update({'topk': topk})
         q_as_query = question.replace('?', '').strip()
-        dists, ids = self.similar(q_as_query, top_p, nprobe)
+        dists, sids = self.similar(q_as_query, top_p, nprobe)
 
         sents = []
-        for idx in ids.flatten():
-            string = self.papers[idx.item()]
-            if string == question and idx + 1 <= self.max_num_sents:
-                string = self.papers[idx.item() + 1]
+        for sid in sids.flatten():
+            string = self.papers[sid.item()]
+            if string == question and sid + 1 <= self.max_num_sents:
+                string = self.papers[sid.item() + 1]
             sents.append(string)
 
         predictions = QuestionAnsweringOutput()
         context = self.compress(sents, mode=mode)
         question, context = [self.sentencizer(x) for x in (question, context)]
-        inputs = (question, context, ids, dists)
+        inputs = (question, context, sids, dists)
         predictions.attach_(*inputs)
         squad_example = self.sample(question, context)
         params = QuestionAnsweringArguments(X=squad_example, **kwargs)

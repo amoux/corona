@@ -150,7 +150,7 @@ def render_output(
             if 'context' in output:
                 context = output['context']
 
-        elif all(hasattr(output, attr) for attr in ('q', 'c', 'ids')):
+        elif all(hasattr(output, attr) for attr in ('q', 'c', 'sids')):
             question, context = output.q, output.c
             # select the first top answer, if none provided.
             if answer is None:

@@ -8,8 +8,8 @@ import spacy
 from nltk.tokenize import word_tokenize
 from tqdm.auto import tqdm
 
-from .dataset import CORD19Dataset
-from .core import GoldIds, GoldIdsOutput, Papers, Sentences
+from .core import GoldPids, GoldPidsOutput, Sampler, SentenceStore
+from .dataset import CORD19
 from .tasks import TaskList
 from .utils import clean_punctuation, normalize_whitespace
 
@@ -19,6 +19,9 @@ except ModuleNotFoundError:
     print(sys.exc_info())
 else:
     globals()["faiss"] = _faiss_lib
+
+
+Pid = int
 
 
 def common_tokens(texts: List[str], minlen=3, nlp=None,
@@ -59,61 +62,66 @@ def common_tokens(texts: List[str], minlen=3, nlp=None,
     return common
 
 
-def extract_questions(papers: Papers,
+def extract_questions(sentstore: Union[Sampler, SentenceStore],
                       minlen: int = 10,
-                      sample: Optional[Iterable[int]] = None) -> Union[None, Papers]:
-    """Extract questions from an instance of papers.
+                      remove_empty: bool = True,
+                      sample: Optional[List[Pid]] = None) -> Union[Sampler, None]:
+    """Extract questions from a Sampler or SentenceStore instance.
 
-    :param papers: An instance of Papers.
+    :param sentstore: An instance of Sampler or SentenceStore holding sentences.
     :param minlen: Minimum sequence length of a title to consider as valid.
-        The length is computed using token units using `nltk.tokenize.word_tokenize`.
-    :param sample: (Optional) An iterable of paper ids to use for retriving for
-        questions. If None, all paper ids from the papers instance is used. 
-    :return: A newly constructed Papers instance with questions mapped to
-        their respective paper-id. Keeping only ids with one item (question) or more.
-        If no questions where found (count == 0); return None.
+        The length is computed via token units using `str.split()`.
+    :param remove_empty: Whether to remove empty (key, value) pairs if no questions
+        where found for that key `(pid)`.
+    :param sample: (Optional) An iterable of paper ids (pids) to use for retriving
+        for questions. If None, all paper ids from the papers instance is used. 
+    :return: A newly constructed Sampler instance with question(s) mapped to
+        their respective paper-id (pid). Keeping only ids with one item (question)
+        or more. If no questions where found for all pid(s); return None.
     """
     interrogative = ['how', 'why', 'when', 'where', 'what', 'whom', 'whose']
+    type_err = f'Expected an instance of SentenceStore, instead got, {type(sentstore)}'
+    assert isinstance(sentstore, (SentenceStore, Sampler)), type_err
+    sample = sentstore.pids if sample is None else sample
+    store = None
+    if isinstance(sentstore, Sampler):
+        store = sentstore.store
+    elif isinstance(sentstore, SentenceStore):
+        store = sentstore._store
 
-    type_err = f'Expected an instance of Papers, instead got, {type(papers)}'
-    assert isinstance(papers, Papers), type_err
-
-    if sample is None:
-        sample = papers.indices
-
-    questions: Dict = {}
-    idx = Sentences()
-    for pid in tqdm(sample, desc='paper_ids'):
-        for sent in papers.sents(pid):
-            words = word_tokenize(sent.lower())
-            length = len(words)
-            if length < minlen:
+    X = Sampler(sample)
+    questions = X.init()
+    for pid in tqdm(sample, desc='pids'):
+        for sent in store[pid]:
+            if sent in questions[pid]:
+                continue
+            words = sent.lower().split()
+            seqlen = len(words)
+            if seqlen < minlen:
                 continue
             if words[0] in interrogative and words[-1].endswith("?"):
-                if pid not in questions:
-                    questions[pid] = []
-                if sent in questions[pid]:
-                    continue
-                idx.seqlen += length
-                idx.counts += 1
-                idx.maxlen = max(idx.maxlen, length)
+                args = (len(questions[pid]), len(sent), seqlen)
+                X.addmeta(pid, *args)
                 questions[pid].append(sent)
-
-    if idx.counts == 0:
+                X.maxlen = max(X.maxlen, seqlen)
+                X.seqlen += seqlen
+                X.counts += 1
+        if remove_empty and len(questions[pid]) == 0:
+            questions.pop(pid)
+    if X.counts == 0:
         return None
-    idx.indices = list(questions.keys())
-    return Papers(idx, questions)
+    return X
 
 
-def extract_titles_slow(cord19: CORD19Dataset,
-                        sample: Optional[Iterable[int]] = None,
+def extract_titles_slow(cord19: CORD19,
+                        sample: Optional[Iterable[Pid]] = None,
                         minlen: int = 10,
-                        show_progress: bool = False) -> Dict[int, str]:
+                        show_progress: bool = False) -> Dict[Pid, str]:
     """Extract titles from the CORD-19-Dataset (Slow).
 
-    :param cord19: A CORD19Dataset instance with the method `corona.title()`.
+    :param cord19: A CORD19 instance with the method `corona.title()`.
     :param sample: An existing iterable of paper ids (Assumes the ids belong
-        to the CORD19Dataset instance).
+        to the CORD19 instance).
     :param minlen: Minimum title string length (filtered without punctuation).
     :param maxids: Number of ids to slice, if `-1` then all ids are used.
 
@@ -136,10 +144,10 @@ def extract_titles_slow(cord19: CORD19Dataset,
     return mapped
 
 
-def extract_titles_fast(cord19: CORD19Dataset,
-                        sample: Optional[Iterable[int]] = None,
+def extract_titles_fast(cord19: CORD19,
+                        sample: Optional[Iterable[Pid]] = None,
                         minlen: int = 10,
-                        maxids: int = -1) -> Dict[int, str]:
+                        maxids: int = -1) -> Dict[Pid, str]:
     """Extract titles from the CORD-19-Dataset (Fast).
 
     :param sample: (optional) An existing list of integer ids (paper indices).
@@ -153,7 +161,7 @@ def extract_titles_fast(cord19: CORD19Dataset,
         sample = cord19.sample(-1)
     else:
         assert isinstance(sample, list)
-        assert isinstance(sample[0], int)
+        assert isinstance(sample[0], Pid)
     if maxids > -1:
         sample = sample[:maxids]
 
@@ -184,21 +192,21 @@ def extract_titles_fast(cord19: CORD19Dataset,
                     pbar.update(len(ids))
 
     mapping = {}  # Sort the dictionary from keys (paper_ids).
-    indices = iter(sorted(batch.keys()))
-    for index in indices:
-        title = batch[index]
-        mapping[index] = title
+    pids = iter(sorted(batch.keys()))
+    for pid in pids:
+        title = batch[pid]
+        mapping[pid] = title
 
     return mapping
 
 
 def tune_ids(encoder,
-             title_map: Dict[int, str],
+             title_map: Dict[Pid, str],
              task_list: Optional[TaskList] = None,
              target_size: int = 1000,
              batch_size: int = 16,
              skip_false_trg: bool = False,
-             show_progress: bool = True) -> GoldIdsOutput:
+             show_progress: bool = True) -> GoldPidsOutput:
     """Tune paper ids of titles to a single or multiple task(s)."""
     if task_list is None:
         task_list = TaskList()
@@ -231,13 +239,13 @@ def tune_ids(encoder,
     index_flat = faiss.IndexFlat(ndim)
     index_flat.add(embedded_titles)
 
-    output = GoldIdsOutput()
+    output = GoldPidsOutput()
     for i, task in enumerate(task_list):
         task_embed = encoder.encode(task.all(), batch_size=16,
                                     show_progress=False)
         D, I = index_flat.search(task_embed, targets[i])
-        ids = np.array([decode[k] for k in I.flatten()])
-        output.append(GoldIds(task.id, ids=ids, dist=D.flatten()))
+        pids = np.array([decode[k] for k in I.flatten()])
+        output.append(GoldPids(task.id, pids=pids, dist=D.flatten()))
 
-    output.pids = [i for i, _ in output.common(topk=-1)]
+    output.pids = [pid for pid, _ in output.common(topk=-1)]
     return output

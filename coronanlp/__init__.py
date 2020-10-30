@@ -1,8 +1,8 @@
 import sys
 
 from . import parser
-from .core import Papers, Sentences, merge_papers
-from .dataset import (CORD19Dataset, build_wiki_like_dataset,
+from .core import SentenceStore, Sampler, merge_samplers
+from .dataset import (CORD19, build_wiki_like_dataset,
                       cache_for_language_modeling, cache_for_tokenizer_vocab)
 from .indexing import PaperIndexer, Path
 from .retrival import (common_tokens, extract_questions, extract_titles_fast,
