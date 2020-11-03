@@ -1,78 +1,16 @@
 import concurrent.futures
 from multiprocessing import cpu_count
-from pathlib import Path
-from typing import Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterator, List, Union
 
 from tqdm.auto import tqdm  # type: ignore
 
 from .core import Sampler, SentenceStore
 from .indexing import PaperIndexer
-from .parser import parse
 from .tokenizer import SpacySentenceTokenizer
 from .utils import clean_tokenization, normalize_whitespace
 
 Pid = int
 Uid = str
-
-WIKI_LIKE_TEMPLATE = {
-    'body': "\n {} \n",
-    'header':  "\n = = {} = = \n",
-    'section': "\n = = = {} = = = \n\n {}\n",
-}
-
-
-def cache_for_tokenizer_vocab(
-        outdir: str,
-        papers: SentenceStore,
-        pids: Optional[List[Pid]] = None,
-        suffix: str = '\n') -> List[str]:
-    paths = []
-    if pids is None:
-        pids = papers.indices
-    outdir = Path(outdir)
-    if not outdir.exists():
-        outdir.mkdir(parents=True)
-    for pid in tqdm(pids, desc='train-files'):
-        fp = outdir.joinpath(f'{pid}.txt')
-        with fp.open('w', encoding='utf-8') as f:
-            for sent in papers.sents(pid):
-                f.write(f'{sent}{suffix}')
-        paths.append(fp.as_posix())
-    return paths
-
-
-def cache_for_language_modeling(
-        outdir: str,
-        papers: SentenceStore,
-        train_ids: List[Pid],
-        test_ids: Optional[List[Pid]] = None,
-        suffix: str = '\n') -> Union[Tuple[Path, Path], Path, None]:
-    def is_list_of_ids(obj): return (
-        isinstance(obj, list) and isinstance(obj[0], Pid))
-
-    def cache(fp, iterable):
-        with fp.open('w', encoding='utf-8') as f:
-            for sent in iterable:
-                f.write(f'{sent}{suffix}')
-
-    outdir = Path(outdir)
-    if not outdir.exists():
-        outdir.mkdir(parents=True)
-    train_fp, test_fp = None, None
-
-    if is_list_of_ids(train_ids):
-        train_fp = outdir.joinpath('train.txt')
-        train_it = papers.index_select(train_ids)
-        cache(train_fp, train_it)
-
-    if test_ids is not None and is_list_of_ids(test_ids):
-        test_fp = outdir.joinpath('test.txt')
-        test_it = papers.index_select(test_ids)
-        cache(test_fp, test_it)
-
-    if all((train_fp, test_fp)):
-        return train_fp, test_fp
-    return train_fp
 
 
 class CORD19(PaperIndexer):
@@ -157,23 +95,19 @@ class CORD19(PaperIndexer):
         docs = self.docs(pids, uids=None)
         tokenize = self.sentencizer
         is_sentence = self.sentencizer.is_sentence
-        papers = X.init()
-        for pid in papers:
+
+        store = X.init()
+        for pid in store:
             for sent in tokenize(next(docs)):
-                if sent.text in papers[pid]:
+                if sent.text in store[pid]:
                     continue
-                seqlen = len(sent)
+                seqlen = len(sent)  # number of tokens.
                 if seqlen < minlen:
                     continue
                 if not is_sentence(sent):
                     continue
-                text = sent.text
-                args = (len(papers[pid]), len(text), seqlen)
-                X.addmeta(pid, *args)
-                papers[pid].append(text)
-                X.maxlen = max(X.maxlen, seqlen)
-                X.seqlen += seqlen
-                X.counts += 1
+                X.include(pid, seqlen, sent.text)
+
         return X
 
     def batch(self, pids: List[Pid], minlen=15, workers=None, build=None) -> SentenceStore:
@@ -207,68 +141,23 @@ class CORD19(PaperIndexer):
         sentence_store.attach_init_args(self)
         return sentence_store
 
+    def __call__(self, id: Union[Pid, Uid, List[Pid], List[Uid]],
+                 ) -> Union[Dict[str, Any], List[Dict[str, Any]], None]:
+        """Retrive a paper from disk and return a dict obj of (key,value) pairs.
 
-def build_wiki_like_dataset(sample: List[Pid],
-                            cord19: CORD19,
-                            fn: str = 'train.txt',
-                            outdir: str = 'data',
-                            wiki_template: Optional[Dict[str, str]] = None) -> None:
-    """Build a Wiki like dataset for language modeling, e.g., GTP/GPT2.
-
-    NOTE: This function should be used for fine-tuning and not for training
-    a new tokenizer. New tokenizer require file splits not single files.
-
-    - Removes (The following tags are removed, since generative models like
-    GPT2 will << generate >> similar for every output, which we dont want 🤗):
-      - `cite-spans`, e.g., `"[1]"`
-      - `ref-spans`, e.g., `"Figure 3C"`
-
-    Example usage:
-    ```python
-    sample = cord19.sample(-1)
-    train_ids, test_ids = coronanlp.split_dataset(sample, subset=0.9)
-    build_wiki_like_dataset(train_ids, cord19, fn='train.txt')
-    build_wiki_like_dataset(test_ids, cord19, fn='test.txt')
-    ```
-    """
-    if wiki_template is None:
-        wiki_template = WIKI_LIKE_TEMPLATE
-    BODY = wiki_template['body']
-    HEADER = wiki_template['header']
-    SECTION_BODY = wiki_template['section']
-
-    outdir = Path(outdir)
-    if not outdir.exists():
-        outdir.mkdir(parents=True)
-
-    fp = outdir.joinpath(fn)
-    with fp.open('w', encoding='utf-8') as file:
-        done = 0
-        size = len(sample)
-        pids = iter(sample)
-        while done < size:
-            pid = next(pids)
-            paper = parse(pid, cord19.load_paper(pid))
-            title = paper.title
-            if title:
-                header = HEADER.format(title)
-                file.write(header)
-            for body in paper:
-                text = body.text
-                for cite in body.cite_spans:
-                    cite_text = cite.text
-                    if cite_text:
-                        text = text.replace(cite_text, '')
-                for ref in body.ref_spans:
-                    ref_text = ref.text
-                    if ref_text:
-                        text = text.replace(ref_text, '')
-                text = normalize_whitespace(text)
-                text = clean_tokenization(text)
-                section = body.section
-                if section:
-                    text = SECTION_BODY.format(section, text)
-                else:
-                    text = BODY.format(text)
-                file.write(text)
-            done += 1
+        * Example usage:
+        ```python
+        cord19(100).keys()
+        #  dict_keys(['paper_id', 'metadata', 'abstract', ...,])
+        cord19([100, 200, 300])[0]['paper_id']
+        cord19('0031e47b76374e05a18c266bd1a1140e5eacb54f')
+        cord19(['0031e47b76374e05a18c266bd1a1140e5eacb54f'])
+        ```
+        """
+        if isinstance(id, (Pid, Uid)):
+            args = (id, None) if isinstance(id, Pid) else (None, id)
+            return self.load_paper(*args)
+        if isinstance(id, list) and isinstance(id[0], (Pid, Uid)):
+            args = (id, None) if isinstance(id[0], Pid) else (None, id)
+            return self.load_papers(*args)
+        return None

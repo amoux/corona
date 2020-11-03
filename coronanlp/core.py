@@ -1,6 +1,7 @@
 import collections
 import random
 from collections import Counter
+from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Iterable, List, NamedTuple, Optional, Tuple, Union
@@ -88,12 +89,41 @@ class Sampler:
         self.store = dict([(pid, []) for pid in self.pids])
         return self.store
 
+    def sents(self, pid: Pid) -> List[str]:
+        return self.store[pid]
+
     def addmeta(self, pid, *args) -> None:
         sid = self.counts
         self._meta.append(MetaData(sid, pid, *args))
 
-    def sents(self, pid: Pid) -> List[str]:
-        return self.store[pid]
+    def include(self, pid: Pid, seqlen: int, text: str) -> None:
+        sid = self.counts
+        args = (len(self.store[pid]), len(text), seqlen)
+        self._meta.append(MetaData(sid, pid, *args))
+        self.store[pid].append(text)
+        self.maxlen = max(self.maxlen, seqlen)
+        self.seqlen += seqlen
+        self.counts += 1
+
+    def merge(self, other: 'Sampler') -> 'Sampler':
+        copy = deepcopy(self)
+        copy.merge_(other)
+        return copy
+
+    def merge_(self, other: 'Sampler') -> None:
+        assert isinstance(other, Sampler), TypeError
+        intersection = set(self.pids).intersection(set(other.pids))
+        if intersection:
+            raise Exception(
+                'Merging intersecting Pid(s) from one or more sampler(s) is'
+                f' currently not supported. Tried merging:\n{intersection}'
+            )
+        self.seqlen += other.seqlen
+        self.counts += other.counts
+        self.maxlen = max(self.maxlen, other.maxlen)
+        self.pids.extend(other.pids)
+        self._meta.extend(other._meta)
+        self.store.update(other.store)
 
     def __getitem__(self, item: Union[int, slice]):
         meta = self._meta
@@ -109,26 +139,23 @@ class Sampler:
             for sent in store[pid]:
                 yield sent
 
+    def __add__(self, other: 'Sampler') -> 'Sampler':
+        return self.merge(other)
+
     def __len__(self):
         return self.counts
 
 
 def merge_samplers(samplers: List[Sampler]) -> Sampler:
-    """Merge a list of instances of SentenceStore into one."""
+    """Merge a list of instances of Sampler objects into one."""
     if isinstance(samplers, list):
         if not isinstance(samplers[0], Sampler):
             raise TypeError("Expected a List[Sampler], but found "
                             f"a List[{type(samplers[0])}] instead.")
-    X = Sampler()
-    c = X.init()
-    for p in samplers:
-        X.seqlen += p.seqlen
-        X.counts += p.counts
-        X.maxlen = max(X.maxlen, p.maxlen)
-        X.pids.extend(p.pids)
-        X._meta.extend(p._meta)
-        c.update(p.store)
-    return X
+    root = Sampler()
+    for sampler in samplers:
+        root.merge_(sampler)
+    return root
 
 
 class SentenceStore:

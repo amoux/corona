@@ -2,6 +2,12 @@ from collections import OrderedDict
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, Iterable, List, NamedTuple, Optional, Union
 
+DEFAULT_ENTRY_KEYS = {
+    'ref': ['id', 'text', 'type', 'latex', 'ref_id'],
+    'bib': ['id', 'title', 'authors', 'year', 'venue',
+            'volume', 'issn', 'pages', 'other_ids', 'ref_id']
+}
+
 
 class SpanField(NamedTuple):
     start: int
@@ -147,6 +153,16 @@ class Paper(List[Body]):
                     continue
                 yield entries[entry]
 
+    @property
+    def ref_spans(self) -> Iterable[RefSpan]:
+        return (span for body in self
+                for span in body.ref_spans)
+
+    @property
+    def cite_spans(self) -> Iterable[CiteSpan]:
+        return (span for body in self
+                for span in body.cite_spans)
+
     def size(self) -> int:
         return len(self)
 
@@ -154,6 +170,15 @@ class Paper(List[Body]):
         ids = (self.pid, self.uid)
         return '{}((pid, uid): {}, size: {})'.format(
             self.__class__.__name__, ids, len(self))
+
+
+def _verify_keys(verify, entry) -> None:
+    entrylist = DEFAULT_ENTRY_KEYS[verify]
+    for key in list(entry.keys()):
+        if key in entrylist:
+            continue
+        entry.pop(key)
+    return
 
 
 def parse(pid, data: Dict[str, Any]) -> Paper:
@@ -173,6 +198,7 @@ def parse(pid, data: Dict[str, Any]) -> Paper:
                 continue
             bib_map = data['bib_entries'][bib_key]
             bib_map.update({'id': bib_key})
+            _verify_keys('bib', entry=bib_map)
             body.bib_entries[bib_key] = BibEntry(**bib_map)
         for ref_span in body.ref_spans:
             ref_key = ref_span.ref_id
@@ -180,6 +206,7 @@ def parse(pid, data: Dict[str, Any]) -> Paper:
                 continue
             ref_map = data['ref_entries'][ref_key]
             ref_map.update({'id': ref_key})
+            _verify_keys('ref', entry=ref_map)
             body.ref_entries[ref_key] = RefEntry(**ref_map)
         paper.append(body)
     paper.meta = MetaData(

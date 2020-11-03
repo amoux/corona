@@ -9,6 +9,19 @@ Pid = int
 Uid = str
 
 
+def fit_index_ivf_fpq(embedding, k=8, nlist=4096, m=32):
+    import faiss
+    _, d = embedding.shape
+    innerprod = faiss.METRIC_INNER_PRODUCT
+    quantizer = faiss.IndexHNSWFlat(d, m, innerprod)
+    index_fpq = faiss.IndexIVFPQ(quantizer, d, nlist, m*2, k, innerprod)
+    index_fpq.verbose = True
+    index_fpq.train(embedding)
+    index_fpq.add(embedding)
+    assert index_fpq.ntotal == embedding.shape[0]
+    return index_fpq
+
+
 def fit_index_ivf_hnsw(
     embedding: np.array,
     metric: Union[str, int, "faiss.METRIC"] = "l2",
