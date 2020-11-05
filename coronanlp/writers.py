@@ -12,9 +12,10 @@ Uid = str
 EOT, NEWLINE, INPUT = "<|endoftext|>", "\n", "{}"
 
 WIKI_TEMPLATE = {
-    'body': "\n {} \n",
-    'header':  "\n = = {} = = \n",
-    'section': "\n = = = {} = = = \n\n {}\n",
+    'header': "\n = = {} = =\n\n",
+    'section': " = = = {} = = =\n\n {}\n",
+    'body_a': " {}\n",
+    'body_b': "{}\n"
 }
 
 
@@ -92,17 +93,22 @@ def wiki_like_file(sample: List[Pid],
     wiki_like_file(test_ids, cord19, fn='test.txt')
     ```
     """
+    def astitle(text: str) -> str:
+        # Normalize and enforce title style format.
+        return text.strip().lower().title()
+
     if wiki_template is None:
         wiki_template = WIKI_TEMPLATE
-    BODY = wiki_template['body']
+    BODY_A = wiki_template['body_a']
+    BODY_B = wiki_template['body_b']
     HEADER = wiki_template['header']
     SECTION_BODY = wiki_template['section']
 
     outdir = Path(outdir)
     if not outdir.exists():
         outdir.mkdir(parents=True)
-
     fp = outdir.joinpath(fn)
+
     with fp.open('w', encoding='utf-8') as file:
         done = 0
         size = len(sample)
@@ -112,8 +118,15 @@ def wiki_like_file(sample: List[Pid],
             paper = parse(pid, cord19.load_paper(pid))
             title = paper.title
             if title:
-                header = HEADER.format(title)
+                header = HEADER.format(astitle(title))
                 file.write(header)
+            # Cache the last/previous section (title) string and use it
+            # to check wheather the next string is the same as previous.
+            # This way we write ONE section per paragraph(s) in sequence.
+            previous_section = ''
+            # Indent only the first paragraph (BODY_A) and for any
+            # subsequent paragraphs we wont apply indentation (BODY_B).
+            BODY = ''
             for body in paper:
                 text = body.text
                 for cite in body.cite_spans:
@@ -126,11 +139,14 @@ def wiki_like_file(sample: List[Pid],
                         text = text.replace(ref_text, '')
                 text = cord19.prep(text)
                 section = body.section
-                if section:
-                    text = SECTION_BODY.format(section, text)
+                if section and section.strip().lower() != previous_section:
+                    text = SECTION_BODY.format(astitle(section), text)
+                    previous_section = section.strip().lower()
+                    BODY = BODY_A  # apply indentation.
                 else:
-                    text = BODY.format(text)
-                file.write(text)
+                    BODY = BODY_B
+                    text = BODY.format(text)  # body: paragraph
+                file.write(f'{text}\n')
             done += 1
 
 
