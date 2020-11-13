@@ -34,6 +34,28 @@ STORE_FILE_NAMES = {
     'index': 'index.bin'
 }
 
+FLAGS = re.MULTILINE | re.DOTALL
+
+
+def re_sub(pattern, repl, text, flags=None):
+    if flags is None:
+        return re.sub(pattern, repl, text, flags=FLAGS)
+    else:
+        return re.sub(pattern, repl, text, flags=(FLAGS | flags))
+
+
+def clean_string(text: str) -> str:
+    text = re.sub(r"[a-zA-Z]+\/[a-zA-Z]+", " ", text)
+    text = re.sub(r"&#160;", "", text)
+    # Remove URL
+    text = re_sub(r"(http)\S+", "", text)
+    text = re_sub(r"(www)\S+", "", text)
+    text = re_sub(r"(href)\S+", "", text)
+    # remove repetition
+    text = re_sub(r"([!?.]){2,}", r"\1", text)
+    text = re_sub(r"\b(\S*?)(.)\2{2,}\b", r"\1\2", text)
+    return text.strip()
+
 
 def clean_punctuation(text: str) -> str:
     punct = re.compile("[{}]".format(re.escape(punctuation)))

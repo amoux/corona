@@ -1,8 +1,18 @@
 import concurrent.futures
+import time
 from multiprocessing import cpu_count
-from typing import Any, Dict, Iterator, List, Union
+from pathlib import Path
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 
+import numpy as np  # type: ignore
+import torch
+from filelock import FileLock
+from torch.utils.data import Dataset
 from tqdm.auto import tqdm  # type: ignore
+from transformers import PreTrainedTokenizer
+
+from coronanlp.core import SentenceStore
+from coronanlp.utils import DataIO
 
 from .core import Sampler, SentenceStore
 from .indexing import PaperIndexer
@@ -161,3 +171,94 @@ class CORD19(PaperIndexer):
             args = (id, None) if isinstance(id[0], Pid) else (None, id)
             return self.load_papers(*args)
         return None
+
+
+def _encode(splits, sent_store, tokenizer, block_size, batch_size):
+    lengths = np.argsort([sent_store._meta[i].strlen for i in splits])
+    max_len = lengths.size
+    batches = range(0, max_len, batch_size)
+    sentences = [sent_store.string(x) for x in splits]
+    encoded = []
+    for i in batches:
+        lines = []
+        for j in lengths[i: min(i + batch_size, max_len)]:
+            string = sentences[j]
+            lines.append(string)
+        batch = tokenizer(lines, truncation=True,
+                          max_length=block_size,
+                          add_special_tokens=True)
+        encoded.extend(batch['input_ids'])
+
+    encoded = [encoded[i] for i in np.argsort(lengths)]
+    assert len(encoded) == max_len
+    return encoded
+
+
+def _cfg_cache(block_size, tokenizer, file_name=None, cache_dir=None) -> Tuple[Path, str]:
+    if file_name is None:
+        raise ValueError("Setting do_cache requires the a file name.")
+    if cache_dir is not None:
+        cache_dir = Path(cache_dir)
+        if not cache_dir.exists():
+            cache_dir.mkdir(parents=True)
+    file_name = file_name if file_name.endswith('.txt') \
+        else f'{file_name}.txt'
+    cache_file_name = 'cached_lm_{}_{}_{}'.format(
+        tokenizer.__class__.__name__, block_size, file_name)
+    cache_file_path = Path(cache_file_name) if cache_dir is None \
+        else cache_dir.joinpath(cache_file_name)
+    cache_lock_path = cache_file_path.absolute().as_posix() + ".lock"
+    return cache_file_path, cache_lock_path
+
+
+class SentenceDataset(Dataset):
+    def __init__(
+        self,
+        splits: List[int],
+        sent_store: SentenceStore,
+        tokenizer: PreTrainedTokenizer,
+        block_size: Optional[int] = None,
+        batch_size: int = 8,
+        do_cache: bool = False,
+        overwrite: bool = False,
+        file_name: Optional[str] = None,
+        cache_dir: Optional[str] = None,
+    ) -> None:
+        assert isinstance(sent_store, SentenceStore)
+        self.encoded: List[torch.Tensor] = []
+        self.max_len: int = 0
+
+        if block_size is None:
+            block_size = tokenizer.model_max_length
+            block_size = block_size - \
+                tokenizer.num_special_tokens_to_add(pair=False)
+
+        if do_cache:
+            file_path, lock_path = _cfg_cache(
+                block_size, tokenizer, file_name, cache_dir)
+
+            with FileLock(lock_path):
+                if file_path.exists() and not overwrite:
+                    start = time.time()
+                    self.encoded = DataIO.load_data(file_path)
+                    self.max_len = len(self.encoded)
+                    print("Loading from cached file {} [took {:.3f} s]".format(
+                        file_path.name, time.time() - start))
+                else:
+                    start = time.time()
+                    self.encoded = _encode(
+                        splits, sent_store, tokenizer, block_size, batch_size)
+                    self.max_len = len(self.encoded)
+                    DataIO.save_data(file_path, self.encoded)
+                    print("Saving into cached file {} [took {:.3f} s]".format(
+                        file_path.name, time.time() - start))
+        else:
+            self.encoded = _encode(
+                splits, sent_store, tokenizer, block_size, batch_size)
+            self.max_len = len(self.encoded)
+
+    def __len__(self) -> int:
+        return self.max_len
+
+    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
+        return torch.tensor(self.encoded[idx], dtype=torch.long)

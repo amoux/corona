@@ -102,7 +102,7 @@ class ScibertQuestionAnswering:
 
     def __init__(
             self,
-            papers: Union[str, SentenceStore],
+            sents: Union[str, SentenceStore],
             index: Union[str, faiss.IndexIVFFlat],
             encoder: Union[str, SentenceTransformer],
             cord19: Optional[CORD19] = None,
@@ -131,17 +131,17 @@ class ScibertQuestionAnswering:
             the `body` argument can be disregarded or left as None since
             it's always overridden.
         """
-        self.papers = SentenceStore.from_disk(papers) \
-            if isinstance(papers, str) else papers
-        assert isinstance(self.papers, SentenceStore)
+        self.sents = SentenceStore.from_disk(sents) \
+            if isinstance(sents, str) else sents
+        assert isinstance(self.sents, SentenceStore)
         self.index = faiss.read_index(index) \
             if isinstance(index, str) else index
         assert isinstance(self.index, faiss.IndexIVFFlat)
         self.encoder = SentenceTransformer(encoder, device=encoder_device) \
             if isinstance(encoder, str) else encoder
         if cord19 is None:
-            if hasattr(self.papers, 'init_args'):
-                self.cord19 = self.papers.init_cord19_dataset()
+            if hasattr(self.sents, 'init_args'):
+                self.cord19 = self.sents.init_cord19_dataset()
                 if hasattr(self.cord19, 'sentencizer'):
                     self._sentencizer = self.cord19.sentencizer
         elif isinstance(cord19, CORD19):
@@ -180,7 +180,8 @@ class ScibertQuestionAnswering:
             self.model, self.tokenizer, device=device_index,
         )
         if isinstance(summarizer_kwargs, dict):
-            self.summarizer_kwargs = BertSummarizerArguments(**summarizer_kwargs)
+            self.summarizer_kwargs = BertSummarizerArguments(
+                **summarizer_kwargs)
         elif isinstance(summarizer_kwargs, BertSummarizerArguments):
             self.summarizer_kwargs = summarizer_kwargs
         self._freq_summarizer = frequency_summarizer
@@ -191,7 +192,7 @@ class ScibertQuestionAnswering:
 
     @property
     def max_num_sents(self) -> int:
-        return self.papers.num_sents - 1
+        return len(self.sents) - 1
 
     @property
     def all_model_devices(self) -> Dict[str, Any]:
@@ -206,8 +207,8 @@ class ScibertQuestionAnswering:
             text = ' '.join(text)
         return [sent.text for sent in self._sentencizer(text)]
 
-    def encode_features(self, sents: Union[str, List[str]]) -> np.ndarray:
-        sentences = self.sentencizer(sents)
+    def encode_features(self, texts: Union[str, List[str]]) -> np.ndarray:
+        sentences = self.sentencizer(texts)
         embedding = self.encoder.encode(sentences, show_progress=False)
         return embedding
 
@@ -218,14 +219,14 @@ class ScibertQuestionAnswering:
         D, I = self.index.search(embedding, k=top_p)
         return D, I
 
-    def compress(self, sents, mode='bert'):
+    def compress(self, texts, mode='bert'):
         if mode == 'bert':
             summarizer_inputs = self.summarizer_kwargs
-            if isinstance(sents, list):
-                summarizer_inputs.body = ' '.join(sents)
+            if isinstance(texts, list):
+                summarizer_inputs.body = ' '.join(texts)
             return self._bert_summarizer(**summarizer_inputs.todict())
         if mode == 'freq':
-            return self._freq_summarizer(sents, nlp=self.nlp)
+            return self._freq_summarizer(texts, nlp=self.nlp)
 
     def sample(self, question: Union[str, List[str]], context: Union[str, List[str]],
                ) -> SquadExample:
@@ -237,15 +238,15 @@ class ScibertQuestionAnswering:
         q_as_query = question.replace('?', '').strip()
         dists, sids = self.similar(q_as_query, top_p, nprobe)
 
-        sents = []
+        texts = []
         for sid in sids.flatten():
-            string = self.papers[sid.item()]
+            string = self.sents[sid.item()]
             if string == question and sid + 1 <= self.max_num_sents:
-                string = self.papers[sid.item() + 1]
-            sents.append(string)
+                string = self.sents[sid.item() + 1]
+            texts.append(string)
 
         predictions = QuestionAnsweringOutput()
-        context = self.compress(sents, mode=mode)
+        context = self.compress(texts, mode=mode)
         question, context = [self.sentencizer(x) for x in (question, context)]
         inputs = (question, context, sids, dists)
         predictions.attach_(*inputs)

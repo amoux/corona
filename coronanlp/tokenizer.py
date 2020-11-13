@@ -1,4 +1,4 @@
-from typing import Iterable, List, NamedTuple, Optional
+from typing import Dict, Iterable, List, NamedTuple, Optional
 
 import spacy
 from spacy.tokens import Doc, Span

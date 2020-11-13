@@ -1,6 +1,15 @@
+import re
 from collections import OrderedDict
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, Iterable, List, NamedTuple, Optional, Union
+
+# matches+ e.g., [34] | [2]
+regex_bracket = re.compile(r'\[\d*?\]{1,2}')
+
+# matches+ e.g., (Figure 6e2) | Fig.1e | Figure 3. | (Fig. 3B and 3C)
+regex_figure = re.compile(
+    r'((\(F|F)ig((\s|\.)|(gure|[\w\d]){1,2}){1,9}(\)|\.))'
+)
 
 DEFAULT_ENTRY_KEYS = {
     'ref': ['id', 'text', 'type', 'latex', 'ref_id'],

@@ -1,6 +1,8 @@
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
+from tqdm.auto import tqdm
+
 from .core import Sampler, SentenceStore
 from .dataset import CORD19
 from .parser import parse
@@ -21,19 +23,19 @@ WIKI_TEMPLATE = {
 
 def files_for_tokenizer(
         outdir: str,
-        papers: Union[Sampler, SentenceStore],
+        sampler_or_store: Union[Sampler, SentenceStore],
         pids: Optional[List[Pid]] = None,
         suffix: str = '\n') -> List[str]:
     paths = []
     if pids is None:
-        pids = papers.indices
+        pids = sampler_or_store.pids
     outdir = Path(outdir)
     if not outdir.exists():
         outdir.mkdir(parents=True)
     for pid in tqdm(pids, desc='train-files'):
         fp = outdir.joinpath(f'{pid}.txt')
         with fp.open('w', encoding='utf-8') as f:
-            for sent in papers.sents(pid):
+            for sent in sampler_or_store.sents(pid):
                 f.write(f'{sent}{suffix}')
         paths.append(fp.as_posix())
     return paths
@@ -41,7 +43,7 @@ def files_for_tokenizer(
 
 def files_for_model(
         outdir: str,
-        papers: Union[Sampler, SentenceStore],
+        sent_store: SentenceStore,
         train_ids: List[Pid],
         test_ids: Optional[List[Pid]] = None,
         suffix: str = '\n') -> Union[Tuple[Path, Path], Path, None]:
@@ -60,12 +62,12 @@ def files_for_model(
 
     if is_list_of_ids(train_ids):
         train_fp = outdir.joinpath('train.txt')
-        train_it = papers.index_select(train_ids)
+        train_it = sent_store.index_select(train_ids)
         cache(train_fp, train_it)
 
     if test_ids is not None and is_list_of_ids(test_ids):
         test_fp = outdir.joinpath('test.txt')
-        test_it = papers.index_select(test_ids)
+        test_it = sent_store.index_select(test_ids)
         cache(test_fp, test_it)
 
     if all((train_fp, test_fp)):
