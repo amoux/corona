@@ -391,6 +391,6 @@ class SentenceStore:
                 yield sent
 
     def __repr__(self):
-        out = '{}(avg_seqlen: {}, num_papers: {}, num_sents: {}, num_tokens: {})'
-        return out.format(self.__class__.__name__, self.avg_seqlen,
-                          self.num_papers, self.num_sents, self.num_tokens)
+        s = '{}(avg_seqlen: {} | num_papers: {:,} | num_sents: {:,} | num_tokens: {:,})'
+        return s.format(self.__class__.__name__, self.avg_seqlen,
+                        self.num_papers, self.num_sents, self.num_tokens)

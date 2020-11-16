@@ -120,7 +120,7 @@ class CORD19(PaperIndexer):
 
         return X
 
-    def batch(self, pids: List[Pid], minlen=15, workers=None, build=None) -> SentenceStore:
+    def batch(self, pids: List[Pid], minlen=15, workers=4, build=None) -> SentenceStore:
         maxsize = len(pids)
         workers = cpu_count() if workers is None else workers
         build = self.build if build is None else build
@@ -214,9 +214,9 @@ def _cfg_cache(block_size, tokenizer, file_name=None, cache_dir=None) -> Tuple[P
 class SentenceDataset(Dataset):
     def __init__(
         self,
-        splits: List[int],
-        sent_store: SentenceStore,
         tokenizer: PreTrainedTokenizer,
+        splits: Optional[List[int]] = None,
+        sent_store: Optional[SentenceStore] = None,
         block_size: Optional[int] = None,
         batch_size: int = 8,
         do_cache: bool = False,
@@ -224,7 +224,8 @@ class SentenceDataset(Dataset):
         file_name: Optional[str] = None,
         cache_dir: Optional[str] = None,
     ) -> None:
-        assert isinstance(sent_store, SentenceStore)
+        if sent_store is not None:
+            assert isinstance(sent_store, SentenceStore)
         self.encoded: List[torch.Tensor] = []
         self.max_len: int = 0
 
