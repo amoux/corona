@@ -1,6 +1,7 @@
 import os
 import pickle
 import re
+import shelve
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -28,11 +29,14 @@ GRADIENTS = {
 
 CACHE_APPNAME = 'coronanlp'
 CACHE_STORE_NAME = 'store'
-STORE_FILE_NAMES = {
-    'sents': 'sents.pkl',
-    'embed': 'embed.npy',
-    'index': 'index.bin'
-}
+STORE_FILE_NAMES = {'sents': 'sents',
+                    'embed': 'embed.npy',
+                    'index': 'index.bin'}
+STORE_SHELVE_SUFFIXES = ['.bak', '.dat', '.dir']
+STORE_ALL_FILE_NAMES = list(STORE_FILE_NAMES.values())
+STORE_ALL_FILE_NAMES.append('sents.pkl')
+STORE_ALL_FILE_NAMES.extend([
+    f'sents{suffix}' for suffix in STORE_SHELVE_SUFFIXES])
 
 FLAGS = re.MULTILINE | re.DOTALL
 
@@ -252,8 +256,8 @@ def delete_store(store_name: str) -> None:
     store_map = get_all_store_paths()
     if store_name in store_map:
         store_dir = store_map[store_name]
-        for file in STORE_FILE_NAMES.values():
-            fp = store_dir.joinpath(file)
+        for filename in STORE_ALL_FILE_NAMES:
+            fp = store_dir.joinpath(filename)
             if not fp.is_file():
                 continue
             fp.unlink()
@@ -286,14 +290,25 @@ def cache_user_data(filename: str, dirname=None, override=False):
 def save_stores(sents=None, embed=None, index=None, store_name=None, override=False):
     if store_name is None:
         store_name = datetime.now().strftime('%Y-%m-%d')
+
     if sents is not None:
         assert hasattr(sents, 'to_disk')
         path = cache_user_data(STORE_FILE_NAMES['sents'], store_name, override)
-        sents.to_disk(path)
+        with shelve.open(path) as db:
+            db['data'] = sents._store
+            db['meta'] = sents._meta
+            db['init'] = sents.init_args
+            db['kwargs'] = {
+                'counts': sents.counts,
+                'maxlen': sents.maxlen,
+                'seqlen': sents.seqlen
+            }
+
     if embed is not None:
         assert isinstance(embed, np.ndarray)
         path = cache_user_data(STORE_FILE_NAMES['embed'], store_name, override)
         np.save(path, embed)
+
     if index is not None:
         import faiss
         assert isinstance(index, faiss.Index)
@@ -312,14 +327,34 @@ def load_store(type_store: str, store_name: str = None) -> Any:
         store_name = last_accessed_dir
 
     cache_dir = store_path.joinpath(store_name)
+
     if type_store == 'sents':
         path = cache_dir.joinpath(STORE_FILE_NAMES['sents'])
-        assert path.is_file()
-        return DataIO.load_data(path.as_posix())
+        # Validate shelve if it contains the expected three files:
+        # Here we obtain the name of the "file.suffix" in order to
+        # show the user the files found vs the expected suffixes (if any).
+        db_suffixes = STORE_SHELVE_SUFFIXES
+        shelvefiles = [p.name for p in path.parent.iterdir() if p.is_file()
+                       and p.suffix in db_suffixes]
+        if not len(db_suffixes) == len(shelvefiles):
+            raise ValueError(
+                'Expected files with extensions {}, found only: {}'.format(
+                    db_suffixes, shelvefiles,
+                ))
+        from .core import SentenceStore
+        with shelve.open(path.as_posix()) as db:
+            data = db['data']
+            pids = list(data.keys())
+            sentence_store = SentenceStore(
+                pids, store=data, meta=db['meta'], **db['kwargs'])
+            sentence_store.init_args = db['init']
+        return sentence_store
+
     if type_store == 'embed':
         path = cache_dir.joinpath(STORE_FILE_NAMES['embed'])
         assert path.is_file()
         return np.load(path.as_posix())
+
     if type_store == 'index':
         path = cache_dir.joinpath(STORE_FILE_NAMES['index'])
         assert path.is_file()

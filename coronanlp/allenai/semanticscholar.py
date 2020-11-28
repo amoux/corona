@@ -159,9 +159,11 @@ class DownloadManager:
         if not self.release_fp.exists():
             if not download:
                 raise ValueError(
-                    'Release data does not exist. Set download=True or'
-                    ' download to a custom/default location by using'
-                    ' the self.download("save/dump/here.json") method')
+                    'Release data does not exist. Set download = True or '
+                    'download to a custom/default location by using the '
+                    'self.download_releases("path/to/realeases.json") method. '
+                    'The filename must match `realeases.json` name otherwise '
+                    'overwrite the self.release_file="custom.json" attribute.')
             self.download_releases(self.release_fp)
         with self.release_fp.open('r') as hr_file:
             data = json.load(hr_file)
@@ -204,8 +206,8 @@ class DownloadManager:
                 content, newname='embeddings', suffix='.csv')
 
         content = {k: v.as_posix() for k, v in content.items()}
-        archive_data = {date: {
-            'links': release, 'content': content, 'info': info}
+        archive_data = {
+            date: {'links': release, 'content': content, 'info': info}
         }
         with self.archive_fp.open('w') as writer:
             if not self.archive_fp.exists():

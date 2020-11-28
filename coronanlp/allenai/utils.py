@@ -27,7 +27,7 @@ def rename_file_and_path(content: Dict[str, Union[str, Path]],
     NOTE: Since this method renames the existing file `in-place`; updating
     the key (name) value (path) is also done in-place.
 
-    :params newname: The new name most match a chuck of the sequence
+    :params newname: The new name most match a chunk of the sequence
         or key. For example, if `key: cord_19_embeddings_4_17` and its
         `path: path/to/cord_19_embeddings_4_17.csv` and we want the
         name to be only `"embeddings"` - this method will work since
@@ -84,7 +84,7 @@ def get_cache_home_dir(subdir: str = None,
     if subdir is not None and isinstance(subdir, str):
         subdir = subdir.strip()
         if subdir.find('/', 0) == 0:
-            subdir = subdir[1:]  # remove first '/' occurrance if
+            subdir = subdir[1:]  # Remove first '/' occurrance if any.
         cache_home = f'{cache_home}/{subdir}'
     if cache_dir is None:
         cache = get_store_dir()
@@ -160,8 +160,8 @@ def _download_cord19(date, hist_releases, outdir=None, suffix='.tar.gz'):
     ds_dir = outdir.joinpath(date)
     if not ds_dir.exists():
         ds_dir.mkdir(parents=True)
-    # download: Keep track of the downloaded files (for cleaning later)
-    # ready: Keep track of the files and directories that can be accessed
+    # :download: Keep track of the downloaded files (for cleaning later)
+    # :ready: Keep track of the files and directories that can be accessed
     # by the user.
     metadata = {'ready': {}, 'download': {}}
     release = hist_releases[date]
@@ -190,8 +190,7 @@ def _download_cord19(date, hist_releases, outdir=None, suffix='.tar.gz'):
     msg.info(f'extracting compressed file {result[0].name} ⌛ ...')
     unzip(result[0], outdir=ds_dir.parent)
     subtars = {
-        st.name.replace(suffix, ''): st
-        for st in ds_dir.glob(f'*{suffix}')
+        st.name.replace(suffix, ''): st for st in ds_dir.glob(f'*{suffix}')
         if st != result[0]
     }
     if subtars:
