@@ -125,9 +125,9 @@ class QuestionAnsweringOutput(List[ModelOutput]):
             argsort = [lengths.index(l) for l in sorted(lengths, reverse=True)]
             if isinstance(n, int):
                 if n == -1:
-                    return argsort[:n]
-                if n > 1:
                     return argsort
+                if n > 1:
+                    return argsort[:n]
             elif isinstance(n, slice):
                 return argsort[n]
         return None
