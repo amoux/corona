@@ -26,6 +26,8 @@ from tqdm.auto import tqdm
 from transformers import (AutoModel, AutoTokenizer, PreTrainedModel,
                           PreTrainedTokenizer)
 
+from .core import Sampler, SentenceStore
+
 
 def semantic_search(
     xq: Union[Tensor, ndarray],
@@ -158,30 +160,35 @@ class SentenceEncoder(nn.Module):
         show_progress=True,
         return_tensors='np',
     ):
-        lengths = np.argsort([len(sent) for sent in sentences])
+        lengths: ndarray
+        if isinstance(sentences, (Sampler, SentenceStore)):
+            lengths = np.argsort([x.seqlen for x in sentences._meta])
+            sentences = list(sentences)
+        else:
+            lengths = np.argsort([len(x) for x in sentences])
+
         maxsize = lengths.size
         batches = range(0, maxsize, batch_size)
         if show_progress:
             batches = tqdm(batches, desc='batch')
-        encode = self.tokenizer.encode
-        batch_encode_plus = self.tokenizer.batch_encode_plus
+        tokenize = self.tokenizer.tokenize
         model_max_length = max_length if max_length is not None \
             else self.tokenizer.model_max_length
 
         self.transformer.eval()
         embeddings = []
         for i in batches:
-            splits: List[List[int]] = []
             maxlen = 0
+            splits: List[List[str]] = []
             for j in lengths[i: min(i + batch_size, maxsize)]:
                 string = sentences[j]
-                tokens = encode(string, add_special_tokens=False)
+                tokens = tokenize(string)
                 maxlen = max(maxlen, len(tokens))
                 splits.append(tokens)
 
             max_length = min(maxlen, model_max_length) + 2
-            batch_inputs = batch_encode_plus(
-                batch_text_or_text_pairs=splits,
+            batch_inputs = self.tokenizer(
+                text=splits,
                 padding=True,
                 truncation=True,
                 max_length=max_length,
@@ -234,23 +241,27 @@ class SentenceEncoder(nn.Module):
 
     @staticmethod
     def from_pretrained(
-        model_name_or_path,
+        pretrained_model_name_or_path,
         do_cls_tokens=False,
         do_max_tokens=False,
         do_sqrt_tokens=False,
         do_mean_tokens=True,
         device='cpu',
+        use_fast=True,
         *model_args,
         **model_kwargs,
     ) -> 'SentenceEncoder':
 
         sentence_encoder = SentenceEncoder(
             transformer=AutoModel.from_pretrained(
-                model_name_or_path,
+                pretrained_model_name_or_path,
                 *model_args,
                 **model_kwargs
             ),
-            tokenizer=AutoTokenizer.from_pretrained(model_name_or_path),
+            tokenizer=AutoTokenizer.from_pretrained(
+                pretrained_model_name_or_path,
+                use_fast=use_fast
+            ),
             do_cls_tokens=do_cls_tokens,
             do_max_tokens=do_max_tokens,
             do_sqrt_tokens=do_sqrt_tokens,

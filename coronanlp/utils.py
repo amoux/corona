@@ -115,7 +115,7 @@ def split_on_char(string, char: str = '?', new: str = None, reverse=False):
     # ['Second question <|Q|>', 'First question <|Q|>']
     ```
     """
-    reverse = 0 if not reverse else -1
+    index = 0 if not reverse else -1
     count = string.count(char)
     if count == 0 or not char:
         return string
@@ -123,12 +123,12 @@ def split_on_char(string, char: str = '?', new: str = None, reverse=False):
     if isinstance(new, str):
         char = new
     output = []
-    while 0 < count:
-        seq = splits.pop(reverse)
+    while count > index:
+        count -= 1
+        seq = splits.pop(index)
         if not seq or len(seq.strip()) == 0:
             continue
         output.append(seq.strip() + char)
-        count -= 1
     return output
 
 
