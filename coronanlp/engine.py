@@ -12,7 +12,7 @@ from .dataset import CORD19
 from .summarization import (BertSummarizer, BertSummarizerArguments,
                             frequency_summarizer)
 from .tokenizer import SpacySentenceTokenizer
-from .ukplab.sentence import SentenceTransformer
+from .ukplab import SentenceEncoder
 
 Sid = int
 
@@ -149,7 +149,7 @@ class ScibertQuestionAnswering:
             self,
             sents: Union[str, SentenceStore],
             index: Union[str, faiss.IndexIVFFlat],
-            encoder: Union[str, SentenceTransformer],
+            encoder: Union[str, SentenceEncoder],
             cord19: Optional[CORD19] = None,
             model: Optional[BertForQuestionAnswering] = None,
             tokenizer: Optional[BertTokenizer] = None,
@@ -182,8 +182,8 @@ class ScibertQuestionAnswering:
         self.index = faiss.read_index(index) \
             if isinstance(index, str) else index
         assert isinstance(self.index, faiss.IndexIVFFlat)
-        self.encoder = SentenceTransformer(encoder, device=encoder_device) \
-            if isinstance(encoder, str) else encoder
+        self.encoder = encoder if isinstance(encoder, SentenceEncoder) \
+            else SentenceEncoder.from_pretrained(encoder, device=encoder_device)
         if cord19 is None:
             if hasattr(self.sents, 'init_args'):
                 self.cord19 = self.sents.init_cord19_dataset()

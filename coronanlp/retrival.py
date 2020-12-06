@@ -11,6 +11,7 @@ from tqdm.auto import tqdm
 from .core import GoldPids, GoldPidsOutput, Sampler, SentenceStore
 from .dataset import CORD19
 from .tasks import TaskList
+from .ukplab import SentenceEncoder
 from .utils import clean_punctuation, normalize_whitespace
 
 try:
@@ -24,8 +25,12 @@ else:
 Pid = int
 
 
-def common_tokens(texts: List[str], minlen=3, nlp=None,
-                  pos_tags=("NOUN", "ADJ", "VERB", "ADV",)):
+def common_tokens(
+    texts: List[str],
+    minlen=3,
+    nlp=None,
+    pos_tags=("NOUN", "ADJ", "VERB", "ADV",)
+):
     """Top Common Tokens (removes stopwords and punctuation).
 
     :param texts: iterable of string titles.
@@ -62,13 +67,15 @@ def common_tokens(texts: List[str], minlen=3, nlp=None,
     return common
 
 
-def extract_questions(sentstore: Union[Sampler, SentenceStore],
-                      minlen: int = 10,
-                      remove_empty: bool = True,
-                      sample: Optional[List[Pid]] = None) -> Union[Sampler, None]:
+def extract_questions(
+    sent_store: Union[Sampler, SentenceStore],
+    minlen: int = 10,
+    remove_empty: bool = True,
+    sample: Optional[List[Pid]] = None,
+) -> Union[Sampler, None]:
     """Extract questions from a Sampler or SentenceStore instance.
 
-    :param sentstore: An instance of Sampler or SentenceStore holding sentences.
+    :param sent_store: An instance of Sampler or SentenceStore holding sentences.
     :param minlen: Minimum sequence length of a title to consider as valid.
         The length is computed via token units using `str.split()`.
     :param remove_empty: Whether to remove empty (key, value) pairs if no questions
@@ -79,19 +86,27 @@ def extract_questions(sentstore: Union[Sampler, SentenceStore],
         their respective paper-id (pid). Keeping only ids with one item (question)
         or more. If no questions where found for all pid(s); return None.
     """
-    interrogative = ['how', 'why', 'when', 'where', 'what', 'whom', 'whose']
-    type_err = f'Expected an instance of SentenceStore, instead got, {type(sentstore)}'
-    assert isinstance(sentstore, (SentenceStore, Sampler)), type_err
-    sample = sentstore.pids if sample is None else sample
+
+    type_err = ('Expected an instance of SentenceStore'
+                f' or Sampler, instead got, {type(sent_store)}')
+    assert isinstance(sent_store, (SentenceStore, Sampler)), type_err
+
+    interrogative = [
+        'how', 'why', 'when', 'where', 'what', 'whom', 'whose'
+    ]
+
     store = None
-    if isinstance(sentstore, Sampler):
-        store = sentstore.store
-    elif isinstance(sentstore, SentenceStore):
-        store = sentstore._store
+    if sample is None:
+        sample = sent_store.pids
+    if isinstance(sent_store, Sampler):
+        store = sent_store.store
+    elif isinstance(sent_store, SentenceStore):
+        store = sent_store._store
 
     X = Sampler(sample)
     questions = X.init()
-    for pid in tqdm(sample, desc='pids'):
+
+    for pid in tqdm(sample, desc='sentences'):
         for sent in store[pid]:
             if sent in questions[pid]:
                 continue
@@ -99,24 +114,25 @@ def extract_questions(sentstore: Union[Sampler, SentenceStore],
             seqlen = len(words)
             if seqlen < minlen:
                 continue
-            if words[0] in interrogative and words[-1].endswith("?"):
-                args = (len(questions[pid]), len(sent), seqlen)
-                X.addmeta(pid, *args)
-                questions[pid].append(sent)
-                X.maxlen = max(X.maxlen, seqlen)
-                X.seqlen += seqlen
-                X.counts += 1
+            if words[0] in interrogative \
+                    and words[-1].endswith("?"):
+                X.include(pid, seqlen, text=sent)
+
         if remove_empty and len(questions[pid]) == 0:
             questions.pop(pid)
+
     if X.counts == 0:
         return None
-    return X
+    else:
+        return X
 
 
-def extract_titles_slow(cord19: CORD19,
-                        sample: Optional[Iterable[Pid]] = None,
-                        minlen: int = 10,
-                        show_progress: bool = False) -> Dict[Pid, str]:
+def extract_titles_slow(
+    cord19: CORD19,
+    sample: Optional[Iterable[Pid]] = None,
+    minlen: int = 10,
+    show_progress: bool = False,
+) -> Dict[Pid, str]:
     """Extract titles from the CORD-19-Dataset (Slow).
 
     :param cord19: A CORD19 instance with the method `corona.title()`.
@@ -144,10 +160,12 @@ def extract_titles_slow(cord19: CORD19,
     return mapped
 
 
-def extract_titles_fast(cord19: CORD19,
-                        sample: Optional[Iterable[Pid]] = None,
-                        minlen: int = 10,
-                        maxids: int = -1) -> Dict[Pid, str]:
+def extract_titles_fast(
+    cord19: CORD19,
+    sample: Optional[Iterable[Pid]] = None,
+    minlen: int = 10,
+    maxids: int = -1,
+) -> Dict[Pid, str]:
     """Extract titles from the CORD-19-Dataset (Fast).
 
     :param sample: (optional) An existing list of integer ids (paper indices).
@@ -200,16 +218,46 @@ def extract_titles_fast(cord19: CORD19,
     return mapping
 
 
-def tune_ids(encoder,
-             title_map: Dict[Pid, str],
-             task_list: Optional[TaskList] = None,
-             target_size: int = 1000,
-             batch_size: int = 16,
-             skip_false_trg: bool = False,
-             show_progress: bool = True) -> GoldPidsOutput:
-    """Tune paper ids of titles to a single or multiple task(s)."""
-    if task_list is None:
-        task_list = TaskList()
+def tune_ids(
+    encoder: SentenceEncoder,
+    title_map: Dict[Pid, str],
+    tasklist: Optional[TaskList] = None,
+    target_size: int = 1000,
+    batch_size: int = 16,
+    skip_false_trg: bool = False,
+    show_progress: bool = True
+) -> GoldPidsOutput:
+    """Tune paper ids of titles to a single or multiple task(s).
+
+    * Example usage: First, get the paper-ids you'll like to tune
+        and a title_map. Which is a `Dict[int, str]` where `int` is
+        (PID), and `str` is its respective title. The following code
+        is one way to get the needed inputs.
+
+    ```python
+    from coronanlp import CORD19, TaskList, extract_titles_fast
+    cord19 = CORD19(...)
+    pids = cord19.sample(5000)
+    titles = extract_titles_fast(cord19, sample=pids)
+
+    # Depending on the sample size you can tune for all tasks
+    # or a few - in this example we only do the first five:
+
+    tasklist = TaskList()[:n]
+    target_size = 500
+    gold_pids = tune_ids(encoder, title_map, tasklist, target_size)
+    ...
+    # GoldPidsOutput(num_tasks: 3, size: (475, 496, 484))
+
+    gold_pids[::]
+    ...
+    # [GoldPids(task_id: 1, size: 475, mindist: 15.1284, maxdist: 45.2211),
+    # GoldPids(task_id: 4, size: 496, mindist: 17.2758, maxdist: 52.5083),
+    # GoldPids(task_id: 7, size: 484, mindist: 15.6549, maxdist: 35.5193)]
+    ```
+    """
+    if tasklist is None:
+        tasklist = TaskList()
 
     titles = list(title_map.values())
     sample = list(title_map.keys())
@@ -217,7 +265,7 @@ def tune_ids(encoder,
 
     def get_k_targets() -> List[int]:
         targets = []
-        for task in task_list:
+        for task in tasklist:
             ntasks = len(task.all())
             goal = round(target_size / ntasks) - ntasks % 2
             maxk = len(sample) - target_size
@@ -230,20 +278,25 @@ def tune_ids(encoder,
                 raise ValueError(
                     'Target size is larger than k queries possible '
                     'given the sample size and number of tasks, pick '
-                    'a smaller ``target_size`` or add more tasks.')
+                    'a smaller ``target_size`` or add more tasks.'
+                )
         return targets
 
-    targets = get_k_targets()  # Eval targets before embedding and indexing.
-    embedded_titles = encoder.encode(titles, batch_size, show_progress)
+    # Eval targets before embedding and indexing.
+    eval_targets = get_k_targets()
+    embedded_titles = encoder.encode(
+        titles, batch_size=batch_size, show_progress=show_progress,
+    )
     ndim = embedded_titles.shape[1]
     index_flat = faiss.IndexFlat(ndim)
     index_flat.add(embedded_titles)
 
     output = GoldPidsOutput()
-    for i, task in enumerate(task_list):
-        task_embed = encoder.encode(task.all(), batch_size=16,
-                                    show_progress=False)
-        D, I = index_flat.search(task_embed, targets[i])
+    for i, task in enumerate(tasklist):
+        task_embed = encoder.encode(
+            task.all(), batch_size=16, show_progress=False,
+        )
+        D, I = index_flat.search(task_embed, eval_targets[i])
         pids = np.array([decode[k] for k in I.flatten()])
         output.append(GoldPids(task.id, pids=pids, dist=D.flatten()))
 
