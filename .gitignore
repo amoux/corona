@@ -7,12 +7,10 @@ site/
 docs/
 MANIFEST.in
 mkdocs.yml
-
 coronanlp.srctrlbm
 coronanlp.srctrldb
 coronanlp.srctrlprj
 coronanlp/pipeline.py
-coronanlp/ukplab/roberta_sentencer.py
 scripts/build_and_train_roberta_mlm.py
 scripts/generation.py
 scripts/language_modeling.py
