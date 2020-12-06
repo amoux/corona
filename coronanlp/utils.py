@@ -99,6 +99,39 @@ def clean_tokenization(sequence: str) -> str:
     )
 
 
+def split_on_char(string, char: str = '?', new: str = None, reverse=False):
+    """Split on a character and concanate the character relative
+    to its prior sequence.
+
+    ```python
+    string = "First question? Second question?"
+    split_on_char(string, char="?")
+    ...
+    # ['First question?', 'Second question?']
+
+    # optionally replace with a new char or/and return reversed
+    split_on_char(string, char="?",  new=" <|Q|>", reverse=True)
+    ...
+    # ['Second question <|Q|>', 'First question <|Q|>']
+    ```
+    """
+    reverse = 0 if not reverse else -1
+    count = string.count(char)
+    if count == 0 or not char:
+        return string
+    splits = string.split(char)
+    if isinstance(new, str):
+        char = new
+    output = []
+    while 0 < count:
+        seq = splits.pop(reverse)
+        if not seq or len(seq.strip()) == 0:
+            continue
+        output.append(seq.strip() + char)
+        count -= 1
+    return output
+
+
 def split_dataset(dataset: List[Any],
                   subset: float = 0.8,
                   samples: int = None,
