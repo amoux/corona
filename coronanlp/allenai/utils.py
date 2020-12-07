@@ -2,7 +2,7 @@
 import tarfile
 import urllib.request
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Dict, List, Optional, Union, Any
 
 import requests
 from bs4 import BeautifulSoup
@@ -10,7 +10,7 @@ from tqdm.auto import tqdm
 from wasabi import msg
 
 from ..utils import get_store_dir
-from .config import DEFAULT_CACHE_DIR, HIST_REALEASES
+from .config import DEFAULT_CACHE_DIR, HIST_REALEASES, SOURCE_DIRNAMES
 
 
 class tqdm_stream(tqdm):
@@ -18,6 +18,28 @@ class tqdm_stream(tqdm):
         if tsize is not None:
             self.total = tsize
         self.update(b * bsize - self.n)
+
+
+def source_directories(config: Dict[str, Dict[str, Dict]],
+                       key: str = "content") -> List[Dict[str, Path]]:
+    sources = []
+    for archive in config.values():
+        filemap = {}
+        for dirname, posix in archive[key].items():
+            path = Path(posix).absolute()
+            if dirname in SOURCE_DIRNAMES['v1']:
+                if not path.is_dir():
+                    continue
+                filemap[dirname] = path
+            elif dirname == SOURCE_DIRNAMES['v2'][0]:
+                if not path.is_dir():
+                    continue
+                subnames = SOURCE_DIRNAMES['v2'][1:]
+                sub_dirs = list(map(path.joinpath, subnames))
+                filemap.update(dict(zip(subnames, sub_dirs)))
+        sources.append(filemap)
+
+    return sources
 
 
 def rename_file_and_path(content: Dict[str, Union[str, Path]],
