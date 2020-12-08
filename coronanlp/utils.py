@@ -103,6 +103,9 @@ def split_on_char(string, char: str = '?', new: str = None, reverse=False):
     """Split on a character and concanate the character relative
     to its prior sequence.
 
+    TODO: Found the re module with methods `re.sub()` and `re.split()`
+    - use the methods from `re` instead of this.
+
     ```python
     string = "First question? Second question?"
     split_on_char(string, char="?")

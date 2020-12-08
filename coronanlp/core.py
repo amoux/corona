@@ -4,7 +4,8 @@ from collections import Counter
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, List, NamedTuple, Optional, Tuple, Union
+from typing import (Callable, Dict, Iterable, List, NamedTuple, Optional,
+                    Tuple, Union)
 
 import numpy as np  # type: ignore
 
@@ -82,25 +83,36 @@ class Sampler:
     counts: int = 0
     maxlen: int = 0
     seqlen: int = 0
-    store: Dict[Pid, List] = field(default_factory=dict, repr=False)
+    _store: Dict[Pid, List] = field(default_factory=dict, repr=False)
     _meta: List[MetaData] = field(default_factory=list, repr=False)
 
     def init(self):
-        self.store = dict([(pid, []) for pid in self.pids])
-        return self.store
+        self._store = dict([(pid, []) for pid in self.pids])
+        return self._store
 
     def sents(self, pid: Pid) -> List[str]:
-        return self.store[pid]
+        return self._store[pid]
 
-    def addmeta(self, pid, *args) -> None:
-        sid = self.counts
-        self._meta.append(MetaData(sid, pid, *args))
+    def map(self, function: Callable[[str], str], inplace: bool = False):
+        """Apply a function to all the sentences in store (f(<str>) -> <str>)."""
+        assert callable(function)
+        assert isinstance(function("string string"), str)
+        if not inplace:
+            clone = Sampler()
+            clone.merge_(deepcopy(self))
+            for pid in clone.pids:
+                clone._store[pid][:] = map(function, clone._store[pid])
+            return clone
+        else:
+            for pid in self.pids:
+                self._store[pid][:] = map(function, self._store[pid])
+            return
 
     def include(self, pid: Pid, seqlen: int, text: str) -> None:
         sid = self.counts
-        args = (len(self.store[pid]), len(text), seqlen)
+        args = (len(self._store[pid]), len(text), seqlen)
         self._meta.append(MetaData(sid, pid, *args))
-        self.store[pid].append(text)
+        self._store[pid].append(text)
         self.maxlen = max(self.maxlen, seqlen)
         self.seqlen += seqlen
         self.counts += 1
@@ -123,18 +135,18 @@ class Sampler:
         self.maxlen = max(self.maxlen, other.maxlen)
         self.pids.extend(other.pids)
         self._meta.extend(other._meta)
-        self.store.update(other.store)
+        self._store.update(other._store)
 
     def __getitem__(self, item: Union[int, slice]):
         meta = self._meta
         if isinstance(item, int):
             m = meta[item]
-            return self.store[m.pid][m.loc]
+            return self._store[m.pid][m.loc]
         if isinstance(item, slice):
-            return [self.store[m.pid][m.loc] for m in meta[item]]
+            return [self._store[m.pid][m.loc] for m in meta[item]]
 
     def __iter__(self):
-        store = self.store
+        store = self._store
         for pid in store:
             for sent in store[pid]:
                 yield sent
@@ -285,7 +297,7 @@ class SentenceStore:
         if isinstance(sampler, Sampler):
             return SentenceStore(
                 sampler.pids, sampler.counts, sampler.maxlen,
-                sampler.seqlen, sampler.store, sampler._meta,
+                sampler.seqlen, sampler._store, sampler._meta,
             )
 
     @staticmethod
@@ -368,6 +380,43 @@ class SentenceStore:
             iter_selected = selected(child_ids)
             return iter_selected
         return None
+
+    def map(self, function: Callable[[str], str], inplace: bool = False):
+        """Apply a function to all the sentences in store (f(<str>) -> <str>)."""
+        assert callable(function)
+        assert isinstance(function("hello world"), str)
+        if not inplace:
+            clone = deepcopy(self)
+            for pid in clone.pids:
+                clone._store[pid][:] = map(function, clone._store[pid])
+            return clone
+        else:
+            for pid in self.pids:
+                self._store[pid][:] = map(function, self._store[pid])
+            return
+
+    def merge(self, other: 'SentenceStore') -> 'SentenceStore':
+        copy = deepcopy(self)
+        copy.merge_(other)
+        return copy
+
+    def merge_(self, other: 'SentenceStore') -> None:
+        assert isinstance(other, SentenceStore), TypeError
+        intersection = set(self.pids).intersection(set(other.pids))
+        if intersection:
+            raise Exception(
+                'Merging intersecting Pid(s) from one or more sampler(s) is'
+                f' currently not supported. Tried merging:\n{intersection}'
+            )
+        self.seqlen += other.seqlen
+        self.counts += other.counts
+        self.maxlen = max(self.maxlen, other.maxlen)
+        self.pids.extend(other.pids)
+        self._meta.extend(other._meta)
+        self._store.update(other._store)
+
+    def __add__(self, other):
+        return self.merge(other)
 
     def __len__(self) -> int:
         return self.num_sents

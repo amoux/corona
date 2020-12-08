@@ -92,20 +92,14 @@ def extract_questions(
     assert isinstance(sent_store, (SentenceStore, Sampler)), type_err
 
     interrogative = [
-        'how', 'why', 'when', 'where', 'what', 'whom', 'whose'
-    ]
+        'how', 'why', 'when', 'where', 'what', 'whom', 'whose']
 
-    store = None
+    store = sent_store._store
     if sample is None:
         sample = sent_store.pids
-    if isinstance(sent_store, Sampler):
-        store = sent_store.store
-    elif isinstance(sent_store, SentenceStore):
-        store = sent_store._store
 
     X = Sampler(sample)
     questions = X.init()
-
     for pid in tqdm(sample, desc='sentences'):
         for sent in store[pid]:
             if sent in questions[pid]:

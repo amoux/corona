@@ -49,6 +49,13 @@ class ArchiveBase(NamedTuple):
     def download_date(self) -> str:
         return self.info.download_date
 
+    @property
+    def paths(self) -> Optional[List[Path]]:
+        if self.source is not None \
+                and hasattr(self.source, 'paths'):
+            return self.source.paths
+        return None
+
     def asdict(self, date_as_root=True):
         dict_obj = {'info': self.info.asdict(),
                     'links': self.links.asdict(),
@@ -76,6 +83,7 @@ class ArchiveConfig(ArchiveBase):
                 if len(p) == 1:
                     return p[0]
                 return p
+
             def __repr__(self):
                 output = list(self._asdict().items())
                 return pformat(output, compact=True)
@@ -146,21 +154,21 @@ class DownloadManager:
             else:
                 self.has_archive = False
 
-    @ property
+    @property
     def cachedir(self):
         return self._cachedir if self.custom_cachedir is None \
             else self.custom_cachedir
 
-    @ property
+    @property
     def hist_dir(self):
         return self._hist_dir if self.custom_hist_dir is None \
             else self.custom_hist_dir
 
-    @ property
+    @property
     def release_fp(self) -> Path:
         return self.cachedir.joinpath(self.release_file)
 
-    @ property
+    @property
     def archive_fp(self) -> Path:
         return self.cachedir.joinpath(self.archive_file)
 
