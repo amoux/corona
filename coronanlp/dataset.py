@@ -11,13 +11,10 @@ from torch.utils.data import Dataset
 from tqdm.auto import tqdm  # type: ignore
 from transformers import PreTrainedTokenizer
 
-from coronanlp.core import SentenceStore
-from coronanlp.utils import DataIO
-
 from .core import Sampler, SentenceStore
 from .indexing import PaperIndexer
 from .tokenizer import SpacySentenceTokenizer
-from .utils import clean_tokenization, normalize_whitespace
+from .utils import DataIO, clean_tokenization, normalize_whitespace
 
 Pid = int
 Uid = str

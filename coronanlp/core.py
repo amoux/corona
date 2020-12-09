@@ -393,29 +393,6 @@ class SentenceStore:
                 self._store[pid][:] = map(function, self._store[pid])
             return
 
-    def merge(self, other: 'SentenceStore') -> 'SentenceStore':
-        copy = deepcopy(self)
-        copy.merge_(other)
-        return copy
-
-    def merge_(self, other: 'SentenceStore') -> None:
-        assert isinstance(other, SentenceStore), TypeError
-        intersection = set(self.pids).intersection(set(other.pids))
-        if intersection:
-            raise Exception(
-                'Merging intersecting Pid(s) from one or more sampler(s) is'
-                f' currently not supported. Tried merging:\n{intersection}'
-            )
-        self.seqlen += other.seqlen
-        self.counts += other.counts
-        self.maxlen = max(self.maxlen, other.maxlen)
-        self.pids.extend(other.pids)
-        self._meta.extend(other._meta)
-        self._store.update(other._store)
-
-    def __add__(self, other):
-        return self.merge(other)
-
     def __len__(self) -> int:
         return self.num_sents
 
