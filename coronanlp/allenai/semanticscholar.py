@@ -78,12 +78,14 @@ class ArchiveConfig(ArchiveBase):
 
         class Source(Base):
             @property
+            def names(self) -> List[str]:
+                return list(self._fields)
+            @property
             def paths(self) -> Union[Path, List[Path]]:
                 p = list(map(self.__getattribute__, self._fields))
                 if len(p) == 1:
                     return p[0]
                 return p
-
             def __repr__(self):
                 output = list(self._asdict().items())
                 return pformat(output, compact=True)

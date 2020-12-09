@@ -30,7 +30,11 @@ def source_directories(config: Dict[str, Dict[str, Dict]],
             if dirname in SOURCE_DIRNAMES['v1']:
                 if not path.is_dir():
                     continue
-                filemap[dirname] = path
+                sub_path = path.joinpath('pdf_json')
+                if sub_path.is_dir():
+                    filemap[dirname] = sub_path
+                else:
+                    filemap[dirname] = path
             elif dirname == SOURCE_DIRNAMES['v2'][0]:
                 if not path.is_dir():
                     continue

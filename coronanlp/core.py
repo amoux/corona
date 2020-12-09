@@ -94,9 +94,8 @@ class Sampler:
         return self._store[pid]
 
     def map(self, function: Callable[[str], str], inplace: bool = False):
-        """Apply a function to all the sentences in store (f(<str>) -> <str>)."""
+        """Apply a function to all the sentences in store."""
         assert callable(function)
-        assert isinstance(function("string string"), str)
         if not inplace:
             clone = Sampler()
             clone.merge_(deepcopy(self))
@@ -382,9 +381,8 @@ class SentenceStore:
         return None
 
     def map(self, function: Callable[[str], str], inplace: bool = False):
-        """Apply a function to all the sentences in store (f(<str>) -> <str>)."""
+        """Apply a function to all the sentences in store."""
         assert callable(function)
-        assert isinstance(function("hello world"), str)
         if not inplace:
             clone = deepcopy(self)
             for pid in clone.pids:
