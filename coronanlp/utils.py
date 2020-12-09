@@ -364,7 +364,7 @@ def load_store(type_store: str, store_name: str = None) -> Any:
 
     cache_dir = store_path.joinpath(store_name)
 
-    if type_store == 'sents':
+    if type_store == 'sents' or type_store == 'cord':
         path = cache_dir.joinpath(STORE_FILE_NAMES['sents'])
         # Validate shelve if it contains the expected three files:
         # Here we obtain the name of the "file.suffix" in order to
@@ -379,6 +379,9 @@ def load_store(type_store: str, store_name: str = None) -> Any:
                 ))
         from .core import SentenceStore
         with shelve.open(path.as_posix()) as db:
+            if type_store == 'cord':
+                from .dataset import CORD19
+                return CORD19(**db['init'])
             data = db['data']
             pids = list(data.keys())
             sentence_store = SentenceStore(

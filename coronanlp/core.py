@@ -136,6 +136,12 @@ class Sampler:
         self._meta.extend(other._meta)
         self._store.update(other._store)
 
+    def get(self, item: Union[Union[int, slice], Iterable[int]]):
+        if isinstance(item, (int, slice)):
+            return self.__getitem__(item)
+        if isinstance(item, (set, tuple, list)):
+            return list(map(self.__getitem__, item))
+
     def __getitem__(self, item: Union[int, slice]):
         meta = self._meta
         if isinstance(item, int):
@@ -392,6 +398,12 @@ class SentenceStore:
             for pid in self.pids:
                 self._store[pid][:] = map(function, self._store[pid])
             return
+
+    def get(self, item: Union[Union[int, slice], Iterable[int]]):
+        if isinstance(item, (int, slice)):
+            return self.__getitem__(item)
+        if isinstance(item, (set, tuple, list)):
+            return list(map(self.__getitem__, item))
 
     def __len__(self) -> int:
         return self.num_sents

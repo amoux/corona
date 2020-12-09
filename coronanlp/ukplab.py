@@ -163,7 +163,6 @@ class SentenceEncoder(nn.Module):
         lengths: ndarray
         if isinstance(sentences, (Sampler, SentenceStore)):
             lengths = np.argsort([x.seqlen for x in sentences._meta])
-            sentences = list(sentences)
         else:
             lengths = np.argsort([len(x) for x in sentences])
 
@@ -181,7 +180,7 @@ class SentenceEncoder(nn.Module):
             maxlen = 0
             splits: List[List[str]] = []
             for j in lengths[i: min(i + batch_size, maxsize)]:
-                string = sentences[j]
+                string = sentences[j.item()]
                 tokens = tokenize(string)
                 maxlen = max(maxlen, len(tokens))
                 splits.append(tokens)

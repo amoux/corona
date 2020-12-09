@@ -14,7 +14,7 @@ from transformers import PreTrainedTokenizer
 from .core import Sampler, SentenceStore
 from .indexing import PaperIndexer
 from .tokenizer import SpacySentenceTokenizer
-from .utils import DataIO, clean_tokenization, normalize_whitespace
+from .utils import DataIO, clean_tokenization, load_store, normalize_whitespace
 
 Pid = int
 Uid = str
@@ -168,6 +168,14 @@ class CORD19(PaperIndexer):
             args = (id, None) if isinstance(id[0], Pid) else (None, id)
             return self.load_papers(*args)
         return None
+
+    @staticmethod
+    def from_store(name: str) -> 'CORD19':
+        return load_store('cord', store_name=name)
+
+    @staticmethod
+    def from_init_args(dict_obj) -> 'CORD19':
+        return CORD19(**dict_obj)
 
 
 def _encode(splits, sent_store, tokenizer, block_size, batch_size):
