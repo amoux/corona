@@ -5,6 +5,7 @@ import faiss
 import numpy as np
 import torch
 from transformers import (BertForQuestionAnswering, BertTokenizer,
+                          PreTrainedModel, PreTrainedTokenizerBase,
                           QuestionAnsweringPipeline, SquadExample)
 
 from .core import SentenceStore
@@ -141,6 +142,7 @@ class QuestionAnsweringOutput(List[ModelOutput]):
 
 
 class ScibertQuestionAnswering:
+    architecture = "BertForQuestionAnswering"
     default_model_name = "amoux/scibert_nli_squad"
     do_lower_case = False
     nprobe_list = [1, 4, 16, 64, 256]
@@ -151,8 +153,8 @@ class ScibertQuestionAnswering:
             index: Union[str, faiss.IndexIVFFlat],
             encoder: Union[str, SentenceEncoder],
             cord19: Optional[CORD19] = None,
-            model: Optional[BertForQuestionAnswering] = None,
-            tokenizer: Optional[BertTokenizer] = None,
+            model: Optional[Union[BertForQuestionAnswering, PreTrainedModel]] = None,
+            tokenizer: Optional[Union[BertTokenizer, PreTrainedTokenizerBase]] = None,
             model_name_or_path: Optional[str] = None,
             do_lower_case: Optional[bool] = None,
             nlp_model: str = 'en_core_sci_sm',
@@ -201,7 +203,8 @@ class ScibertQuestionAnswering:
             do_lower_case = self.do_lower_case
         if model is None or isinstance(model, str):
             self.model = BertForQuestionAnswering.from_pretrained(model_name_or_path)
-        elif isinstance(model, BertForQuestionAnswering):
+        elif isinstance(model, (PreTrainedModel, BertForQuestionAnswering)) \
+                and self.architecture in model.config.architectures:
             self.model = model
         else:
             raise InvalidModelNameOrPathError
@@ -212,28 +215,30 @@ class ScibertQuestionAnswering:
             self.tokenizer = BertTokenizer.from_pretrained(
                 model_name_or_path, do_lower_case=do_lower_case,
             )
-        elif isinstance(tokenizer, BertTokenizer):
+        elif isinstance(tokenizer, (BertTokenizer, PreTrainedTokenizerBase)):
             self.tokenizer = tokenizer
         else:
             raise InvalidModelNameOrPathError
         # HF QAPipeline uses index, -1 is the default for CPU.
         device_index = -1
-        if self.model.device.index is not None and self.model.device.type == 'cuda':
+        if self.model.device.index is not None \
+                and self.model.device.type == 'cuda':
             # Model using CUDA, set CUDA idx.
             device_index = self.model.device.index
         self.pipeline = QuestionAnsweringPipeline(
             self.model, self.tokenizer, device=device_index,
         )
         if isinstance(summarizer_kwargs, dict):
-            self.summarizer_kwargs = BertSummarizerArguments(
-                **summarizer_kwargs)
+            self.summarizer_kwargs = BertSummarizerArguments(**summarizer_kwargs)
         elif isinstance(summarizer_kwargs, BertSummarizerArguments):
             self.summarizer_kwargs = summarizer_kwargs
         self._freq_summarizer = frequency_summarizer
-        self._bert_summarizer = BertSummarizer(model_name_or_path=model_name_or_path,
-                                               tokenizer=self.tokenizer,
-                                               hidden=summarizer_hidden,
-                                               reduce_option=summarizer_reduce)
+        self._bert_summarizer = BertSummarizer(
+            model_name_or_path=model_name_or_path,
+            tokenizer=self.tokenizer,
+            hidden=summarizer_hidden,
+            reduce_option=summarizer_reduce
+        )
 
     @property
     def max_num_sents(self) -> int:

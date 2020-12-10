@@ -1,11 +1,11 @@
 import concurrent.futures
 import sys
 from multiprocessing import cpu_count
-from typing import Dict, Iterable, List, Optional, Union
+from typing import Dict, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
 import spacy
-from nltk.tokenize import word_tokenize
+from spacy.language import Language
 from tqdm.auto import tqdm
 
 from .core import GoldPids, GoldPidsOutput, Sampler, SentenceStore
@@ -26,44 +26,39 @@ Pid = int
 
 
 def common_tokens(
-    texts: List[str],
-    minlen=3,
-    nlp=None,
-    pos_tags=("NOUN", "ADJ", "VERB", "ADV",)
-):
-    """Top Common Tokens (removes stopwords and punctuation).
+        texts: Iterable[str],
+        minlen: int = 3,
+        lowercase: bool = False,
+        nlp: Optional[Language] = None
+) -> List[Tuple[str, int]]:
+    """Extract common tokens from a collection of strings.
 
-    :param texts: iterable of string titles.
-    :param minlen: dismiss tokens with a minimum length.
-    :param nlp: use an existing spacy language instance.
-    :param pos_tags: lemmatize tokens based on part-of-speech tags.
+    * Preprocess: remove stop-words, punctuation and lemmatize.
+
+    :param texts: Iterable of string sequences.
+    :param minlen: Dismiss tokens with a minimum length.
+    :param nlp: An existing spacy language instance.
     """
-    common = {}
-    if nlp is None:
-        nlp = spacy.load("en_core_web_sm")
+    nlp = nlp if nlp is not None and isinstance(nlp, Language) \
+        else spacy.load('en_core_web_sm', disable=['tagger'])
 
-    for doc in nlp.pipe(texts):
-        tokens = []
-        for token in doc:
+    counter = {}
+    for string in texts:
+        string = clean_punctuation(string)
+        for token in nlp(string):
             if token.is_stop:
                 continue
-            if token.pos_ in pos_tags:
-                tokens.append(token.lemma_)
-            else:
-                tokens.append(token.text)
-
-        text = " ".join(tokens)
-        text = clean_punctuation(text)
-        for token in word_tokenize(text):
+            token = token.lemma_ if not lowercase \
+                else token.lemma_.lower()
             if len(token) < minlen:
                 continue
-            if token not in common:
-                common[token] = 1
+            if token not in counter:
+                counter[token] = 1
             else:
-                common[token] += 1
+                counter[token] += 1
 
-    common = sorted(common.items(),
-                    key=lambda k: k[1], reverse=True)
+    common = sorted(
+        counter.items(), key=lambda k: k[1], reverse=True)
     return common
 
 
