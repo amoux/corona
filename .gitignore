@@ -10,7 +10,7 @@ mkdocs.yml
 coronanlp.srctrlbm
 coronanlp.srctrldb
 coronanlp.srctrlprj
-coronanlp/pipeline.py
+coronanlp/experimental*
 scripts/build_and_train_roberta_mlm.py
 scripts/generation.py
 scripts/language_modeling.py
