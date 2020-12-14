@@ -239,7 +239,6 @@ class DownloadManager:
                     error = f'{date} | {type(date)}'
                     raise InvalidArchiveDateKey(error)
                 return cached_archive
-        return None
 
     def download(
         self, date: str, rm_cached=True, fix_csv_name=True, return_dict=False,

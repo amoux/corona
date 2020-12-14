@@ -129,8 +129,9 @@ class QuestionAnsweringOutput(List[ModelOutput]):
                     return argsort
                 if n > 1:
                     return argsort[:n]
-            elif isinstance(n, slice):
-                return argsort[n]
+            if isinstance(n, slice):
+                sliced = n
+                return argsort[sliced]
         return None
 
     def size(self) -> int:

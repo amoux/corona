@@ -1,5 +1,4 @@
 import concurrent.futures
-from os import strerror
 import time
 from multiprocessing import cpu_count
 from pathlib import Path
@@ -7,10 +6,10 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 
 import numpy as np  # type: ignore
 import torch
-from filelock import FileLock
+from filelock import FileLock  # type: ignore
 from torch.utils.data import Dataset
 from tqdm.auto import tqdm  # type: ignore
-from transformers import PreTrainedTokenizer
+from transformers import PreTrainedTokenizer  # type: ignore
 
 from .core import Sampler, SentenceStore
 from .indexing import PaperIndexer

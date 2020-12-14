@@ -15,42 +15,37 @@ for documentation and its actual implementation.
     url = "https://arxiv.org/abs/2010.08240",
 }
 """
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
-import numpy as np
+import numpy as np  # type: ignore
 import torch
-import torch.nn as nn
-from numpy import ndarray
-from torch import Tensor
-from tqdm.auto import tqdm
-from transformers import (AutoModel, AutoTokenizer, PreTrainedModel,
-                          PreTrainedTokenizer)
+from tqdm.auto import tqdm  # type: ignore
+from transformers import (AutoModel, AutoTokenizer,  # type: ignore
+                          PreTrainedModel, PreTrainedTokenizer)
 
 from .core import Sampler, SentenceStore
 
 
 def semantic_search(
-    xq: Union[Tensor, ndarray],
-    xb: Union[Tensor, ndarray],
+    xq: Union[torch.Tensor, np.ndarray],
+    xb: Union[torch.Tensor, np.ndarray],
     top_k: int = 10,
     q_chunk: int = 100,
     d_chunk: int = 100000,
 ) -> List[List[Dict[str, Union[int, float]]]]:
 
-    if isinstance(xq, ndarray):
+    if isinstance(xq, np.ndarray):
         xq = torch.from_numpy(xq)
-    if isinstance(xb, ndarray):
+    if isinstance(xb, np.ndarray):
         xb = torch.from_numpy(xb)
     if len(xq.shape) == 1:
         xq = xq.unsqueeze(0)
-
     xq = xq / xq.norm(dim=1)[:, None]
     xb = xb / xb.norm(dim=1)[:, None]
-
     if xb.device != xq.device:
         xb = xb.to(xq.device)
-    output = [[] for query in range(len(xq))]
 
+    output: List[List[Any]] = [[] for q in range(len(xq))]
     for query_start in range(0, len(xq), q_chunk):
         query_end = min(query_start + q_chunk, len(xq))
 
@@ -75,7 +70,7 @@ def semantic_search(
     return output
 
 
-class SentenceEncoderPooling(nn.Module):
+class SentenceEncoderPooling(torch.nn.Module):
     def __init__(
         self,
         do_cls_tokens=False,
@@ -100,8 +95,12 @@ class SentenceEncoderPooling(nn.Module):
     def output_dim(self) -> int:
         return self.multiplier * self.hidden_size
 
-    def forward(self, hidden_states: Tensor, attention_mask: Tensor) -> Tensor:
-        output: List[Tensor] = []
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: torch.Tensor
+    ) -> torch.Tensor:
+        output: List[torch.Tensor] = []
         token_embeddings = hidden_states[0]
         extended_attn = attention_mask.unsqueeze(-1) \
             .expand(token_embeddings.size()).float()
@@ -129,7 +128,7 @@ class SentenceEncoderPooling(nn.Module):
         return sentence_embeddings
 
 
-class SentenceEncoder(nn.Module):
+class SentenceEncoder(torch.nn.Module):
     def __init__(
         self,
         transformer: PreTrainedModel,
@@ -154,13 +153,13 @@ class SentenceEncoder(nn.Module):
 
     def encode(
         self,
-        sentences,
-        max_length=128,
-        batch_size=9,
-        show_progress=True,
-        return_tensors='np',
-    ):
-        lengths: ndarray
+        sentences: Union[List[str], Sampler, SentenceStore],
+        max_length: int = 128,
+        batch_size: int = 9,
+        show_progress: bool = True,
+        return_tensors: str = 'np',
+    ) -> Union[np.ndarray, torch.Tensor]:
+        lengths: np.ndarray
         if isinstance(sentences, (Sampler, SentenceStore)):
             lengths = np.argsort([x.seqlen for x in sentences._meta])
         else:
@@ -209,11 +208,11 @@ class SentenceEncoder(nn.Module):
 
     def forward(
         self,
-        input_ids: Tensor,
-        attention_mask: Tensor,
-        token_type_ids: Optional[Tensor] = None,
+        input_ids: torch.Tensor,
+        attention_mask: torch.Tensor,
+        token_type_ids: Optional[torch.Tensor] = None,
         output_hidden_states: Optional[bool] = None,
-    ) -> Dict[str, Tensor]:
+    ) -> Dict[str, torch.Tensor]:
 
         if output_hidden_states is None:
             if self.transformer.config.output_hidden_states:
