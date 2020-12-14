@@ -1,6 +1,5 @@
 import collections
 import random
-from collections import Counter
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -44,7 +43,7 @@ class GoldPidsOutput(List[GoldPids]):
         return len(self)
 
     def common(self, topk=10) -> List[Tuple[Pid, int]]:
-        counts = Counter(self.sample())
+        counts = collections.Counter(self.sample())
         if topk == -1:
             return counts.most_common()
         return counts.most_common()[:topk]

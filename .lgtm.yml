@@ -1,0 +1,20 @@
+##########################################################################################
+# Customize file classifications.                                                        #
+# Results from files under any classifier will be excluded from LGTM                     #
+# statistics.                                                                            #
+##########################################################################################
+
+queries:
+  - exclude: py/implicit-string-concatenation-in-list
+extraction:
+  python:
+    python_setup:
+      version: 3
+    index:
+      exclude:
+        - coronanlp/tasks.py
+        - notebooks
+        - scripts
+        - models
+        - docs
+        - src

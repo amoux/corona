@@ -84,7 +84,6 @@ class PaperIndexer:
             self.splits = np.array(b).cumsum(0).tolist()
         else:
             self.splits = self.bins
-        del file_paths
 
     def _map_files_to_ids(self, json_files: List[str]) -> None:
         for pid, file in enumerate(json_files, self.index_start):
@@ -99,7 +98,7 @@ class PaperIndexer:
         self.first_index = min(self.pid2uid)
         self.last_index = max(self.pid2uid)
 
-    def _index_dirpath(self, pid: Pid) -> Union[Path, None]:
+    def _index_dirpath(self, pid: Pid) -> Optional[Path]:
         # Lower bound if one source or pid is less or equal to the first item.
         if len(self.bins) == 1 or pid <= self.splits[0]:
             return self.paths[0]
@@ -107,7 +106,6 @@ class PaperIndexer:
         # returning the id to path closest to its maximum split size. A split
         # is based on the cumulative sum of each bin (bin: number of files in
         # a directory), after the first item value.
-
         def nearest_mid(start: int, end: int, x: List[int], y: int) -> int:
             m = start + ((end - start) // (x[end] - x[start])) * (y - x[start])
             return m
@@ -128,8 +126,7 @@ class PaperIndexer:
                 first = mid + 1
             else:
                 last = mid - 1
-        if first > last:
-            return None
+        return None
 
     def _load_data(self, uid: Uid) -> Dict[str, Any]:
         path = self._index_dirpath(self.uid2pid[uid])
@@ -223,6 +220,6 @@ class PaperIndexer:
         multi_src = "[\n  {},\n]"  # Template for a list of sources.
         src = self.source_name if isinstance(self.source_name, str) \
             else multi_src.format(', '.join(self.source_name))
-        return "{}(papers: {}, files_sorted: {}, source: {})".format(
+        return "{}(papers: {:,}, files_sorted: {}, source: {})".format(
             self.__class__.__name__, self.num_papers, self.is_files_sorted, src,
         )

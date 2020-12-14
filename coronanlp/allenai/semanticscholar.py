@@ -10,6 +10,10 @@ from .utils import (_download_cord19, _download_hist_releases,
                     rename_file_and_path, source_directories)
 
 
+class InvalidArchiveDateKey(ValueError):
+    ...
+
+
 class Info(NamedTuple):
     has_cached_files: bool = False
     download_date: str = ''
@@ -68,7 +72,7 @@ class ArchiveBase(NamedTuple):
 class ArchiveConfig(ArchiveBase):
 
     @staticmethod
-    def from_dict(cfg: Dict[str, Dict[str, Dict]]) -> 'ArchiveConfig':
+    def from_dict(cfg: Dict[str, Dict[str, Any]]) -> 'ArchiveConfig':
         date = list(cfg.keys())[0]
         arch = cfg[date]
         info = Info(**arch['info'])
@@ -123,20 +127,17 @@ class DownloadManager:
                 custom_cachedir = Path(custom_cachedir)
             self.custom_cachedir = custom_cachedir
             self.is_custom_cachedir = True
-
         if custom_hist_dir is not None:
             if not isinstance(custom_hist_dir, Path):
                 custom_hist_dir = Path(custom_hist_dir)
             self.custom_hist_dir = custom_hist_dir
             self.is_custom_hist_dir = True
-
         if not self.is_custom_cachedir or not self.is_custom_hist_dir:
             self._hist_dir = get_cache_home_dir(subdir='hr')
             self.is_custom_hist_dir = False
             if not self.is_custom_cachedir:
                 self._cachedir = self._hist_dir.parent
                 self.is_custom_cachedir = False
-
         # Check if the user has downloaded the historical releases
         # within the default cache directory.
         if not self.is_custom_cachedir:
@@ -174,10 +175,12 @@ class DownloadManager:
     def archive_fp(self) -> Path:
         return self.cachedir.joinpath(self.archive_file)
 
-    def all_archive_dates(self) -> List[str]:
-        current_archive = self.load_archive()
-        dates = list(current_archive.keys())
-        return dates
+    def all_archive_dates(self) -> Optional[List[str]]:
+        cached_archive = self.load_archive()
+        if isinstance(cached_archive, dict):
+            dates = list(cached_archive.keys())
+            return dates
+        return None
 
     def all_release_dates(self) -> List[str]:
         hist_releases = self.load_releases()
@@ -210,20 +213,37 @@ class DownloadManager:
             json.dump(hr, hr_file, indent=2)
             self.has_releases = True
 
-    def load_archive(self) -> Dict[str, Dict[str, str]]:
+    def load_archive(self, from_date: Optional[str] = None
+                     ) -> Optional[Union[Dict[str, Dict[str, str]], ArchiveConfig]]:
+        date = False if from_date is None else from_date
         archive_fp = self.archive_fp
         if not archive_fp.exists():
             raise ValueError(f"Archive file does not exist {archive_fp}")
         if self._archive is not None:
-            return self._archive
-        with archive_fp.open('r') as fp:
-            archive_data = json.load(fp)
-            self._archive = archive_data
-        return archive_data
+            cached_archive = self._archive
+            if isinstance(date, str):
+                if date in cached_archive.keys():
+                    cfg = {date: cached_archive[date]}
+                    return ArchiveConfig.from_dict(cfg)
+                error = f'{date} | {type(date)}'
+                raise InvalidArchiveDateKey(error)
+            return cached_archive
+        else:
+            with archive_fp.open('r') as fp:
+                cached_archive = json.load(fp)
+                self._archive = cached_archive
+                if isinstance(date, str):
+                    if date in cached_archive.keys():
+                        cfg = {date: cached_archive[date]}
+                        return ArchiveConfig.from_dict(cfg)
+                    error = f'{date} | {type(date)}'
+                    raise InvalidArchiveDateKey(error)
+                return cached_archive
+        return None
 
     def download(
-        self, date: str, rm_cached: bool = True, fix_csv_name: bool = True,
-    ) -> Dict[str, Dict[str, str]]:
+        self, date: str, rm_cached=True, fix_csv_name=True, return_dict=False,
+    ) -> Union[ArchiveConfig, Dict[str, Dict[str, str]]]:
         info = {
             'has_cached_files': False if rm_cached else True,
             'download_date': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -240,13 +260,17 @@ class DownloadManager:
                 content, newname='embeddings', suffix='.csv')
 
         content = {k: v.as_posix() for k, v in content.items()}
-        archive_data = {date: {'links': release,
-                               'content': content, 'info': info}}
-        tmp_archive = {}
-        if self.archive_fp.exists() and self.archive_fp.is_file():
-            tmp_archive.update(self.load_archive())
+        cfg = {date: {'links': release, 'content': content, 'info': info}}
 
-        tmp_archive.update(archive_data)
+        temp_archive = {}
+        if self.archive_fp.exists() and self.archive_fp.is_file():
+            cached_archive = self.load_archive()
+            if isinstance(cached_archive, dict):
+                temp_archive.update(cached_archive)
+
+        temp_archive.update(cfg)
         with self.archive_fp.open('w') as writer:
-            json.dump(tmp_archive, writer, indent=4)
-        return archive_data
+            json.dump(temp_archive, writer, indent=4)
+        if not return_dict:
+            return ArchiveConfig.from_dict(cfg)
+        return cfg

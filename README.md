@@ -1,5 +1,7 @@
 # ⚕ coronanlp
 
+[![Total alerts](https://img.shields.io/lgtm/alerts/g/amoux/corona.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/amoux/corona/alerts/) [![Language grade: Python](https://img.shields.io/lgtm/grade/python/g/amoux/corona.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/amoux/corona/context:python)
+
 The current status of the project is experimental 🔬
 
 ## Docs

@@ -3,6 +3,7 @@
 /.src*
 /models*
 .vscode/settings.json
+/.scripts
 site/
 docs/
 MANIFEST.in
@@ -11,9 +12,3 @@ coronanlp.srctrlbm
 coronanlp.srctrldb
 coronanlp.srctrlprj
 coronanlp/experimental*
-scripts/build_and_train_roberta_mlm.py
-scripts/generation.py
-scripts/language_modeling.py
-scripts/run_language_modeling.py
-scripts/todo_tokenizer.py
-scripts/visualizer.py

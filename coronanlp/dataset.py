@@ -1,4 +1,5 @@
 import concurrent.futures
+from os import strerror
 import time
 from multiprocessing import cpu_count
 from pathlib import Path
@@ -106,14 +107,15 @@ class CORD19(PaperIndexer):
         store = X.init()
         for pid in store:
             for sent in tokenize(next(docs)):
-                if sent.text in store[pid]:
+                text = sent.text
+                if text in store[pid]:
                     continue
                 seqlen = len(sent)  # number of tokens.
                 if seqlen < minlen:
                     continue
                 if not is_sentence(sent):
                     continue
-                X.include(pid, seqlen, sent.text)
+                X.include(pid, seqlen, text)
 
         return X
 

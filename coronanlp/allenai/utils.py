@@ -2,7 +2,7 @@
 import tarfile
 import urllib.request
 from pathlib import Path
-from typing import Dict, List, Optional, Union, Any
+from typing import Dict, List, Optional, Union
 
 import requests
 from bs4 import BeautifulSoup
