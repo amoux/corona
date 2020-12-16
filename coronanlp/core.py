@@ -190,11 +190,18 @@ class SentenceStore:
         self.maxlen = maxlen
         self._store = store
         self._meta = meta
+        self._minlen: Optional[int] = None
         self.avg_seqlen = round(self.seqlen / self.counts, 2)
         self.num_papers = len(self.pids)
         self.num_sents = self.counts
         self.num_tokens = self.seqlen
         self.init_args = None
+
+    @property
+    def minlen(self) -> Optional[int]:
+        if self._minlen is None:
+            self._minlen = min(map(lambda i: i.seqlen, self._meta))
+        return self._minlen
 
     def decode(self, sids: Union[Sid, List[Sid]]) -> Union[Pid, List[Pid]]:
         """Decode an single or an iterable of sentence-ids to paper-ids."""

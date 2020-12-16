@@ -225,9 +225,10 @@ def tune_ids(
 
     ```python
     from coronanlp import CORD19, TaskList, extract_titles_fast
+
     cord19 = CORD19(...)
     pids = cord19.sample(5000)
-    titles = extract_titles_fast(cord19, sample=pids)
+    title_map = extract_titles_fast(cord19, sample=pids)
 
     # Depending on the sample size you can tune for all tasks
     # or a few - in this example we only do the first five:
@@ -236,13 +237,14 @@ def tune_ids(
     target_size = 500
     gold_pids = tune_ids(encoder, title_map, tasklist, target_size)
     ...
-    # GoldPidsOutput(num_tasks: 3, size: (475, 496, 484))
+    # GoldPidsOutput(num_tasks: 5, size: (475, 480, 490, 496, 496))
 
     gold_pids[::]
     ...
-    # [GoldPids(task_id: 1, size: 475, mindist: 15.1284, maxdist: 45.2211),
-    # GoldPids(task_id: 4, size: 496, mindist: 17.2758, maxdist: 52.5083),
-    # GoldPids(task_id: 7, size: 484, mindist: 15.6549, maxdist: 35.5193)]
+    # [GoldPids(task_id: 1, size: 475, mindist: 11.9891, maxdist: 37.1647),
+    #  GoldPids(task_id: 2, size: 480, mindist: 15.0586, maxdist: 51.9199),
+    #  GoldPids(task_id: 3, size: 490, mindist: 12.5479, maxdist: 29.0433),
+    #  ... ]
     ```
     """
     if tasklist is None:
