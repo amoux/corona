@@ -16,9 +16,9 @@ class SpacySentenceTokenizer:
         nlp_model: str = "en_core_sci_sm",
         word_ratio: float = 0.40,
         char_ratio: float = 0.60,
-        min_tokens: int = 5,
-        disable: List[str] = ["ner", "tagger"],
+        min_length: int = 5,
         max_length: int = 2_000_000,
+        disable: List[str] = ["ner", "tagger"],
     ) -> None:
         """Spacy Sentence Tokenizer.
 
@@ -31,9 +31,9 @@ class SpacySentenceTokenizer:
         self.nlp_model = nlp_model
         self.word_ratio = word_ratio
         self.char_ratio = char_ratio
-        self.min_tokens = min_tokens
-        self.disabled_pipes = disable
+        self.min_length = min_length
         self.max_length = max_length
+        self.disabled_pipes = disable
 
     def tokenize(self, text: str) -> List[Span]:
         """Tokenize to sentences from a string of sequences to sentences."""
@@ -51,7 +51,7 @@ class SpacySentenceTokenizer:
     def is_sentence(self, doc: Optional[Doc] = None, k: Optional[TextScore] = None) -> bool:
         """Check whether a sequence is a valid english sentence."""
         k = k if k is not None else self.score(doc)
-        if k.num_tokens < self.min_tokens:
+        if k.num_tokens < self.min_length:
             return False
         if k.word_ratio < self.word_ratio:
             return False

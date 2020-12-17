@@ -29,8 +29,9 @@ class CORD19(PaperIndexer):
             text_key: str = "body_text",
             index_start: int = 1,
             sort_first: bool = False,
+            init_sentencizer: bool = False,
             nlp_model: str = "en_core_sci_sm",
-            **kwargs,
+            **sentencizer_kwargs,
     ):
         """CORD19 represents a data reader/loader (IO) over the source files.
 
@@ -39,9 +40,14 @@ class CORD19(PaperIndexer):
         """
         super(CORD19, self).__init__(source, index_start, sort_first)
         self.text_key = text_key
-        self.sentencizer = SpacySentenceTokenizer(nlp_model, **kwargs)
-        self.nlp = self.sentencizer.nlp
-        self.doc_suffix = " "
+        self.sentencizer: SpacySentenceTokenizer
+        self.nlp: Optional[Any] = None
+        self.doc_suffix: str = " "
+        sentencizer_kwargs.update({'nlp_model': nlp_model})
+        self.sentencizer_kwargs = sentencizer_kwargs
+        self.sentencizer_enabled = False
+        if init_sentencizer:
+            self.init_sentencizer()
 
     @property
     def all_dataset_keys(self):
@@ -52,6 +58,14 @@ class CORD19(PaperIndexer):
         text = normalize_whitespace(text)
         text = clean_tokenization(text)
         return text
+
+    def init_sentencizer(self, **kwargs) -> None:
+        if not kwargs:
+            kwargs = self.sentencizer_kwargs
+        if not self.sentencizer_enabled:
+            self.sentencizer = SpacySentenceTokenizer(**kwargs)
+            self.nlp = self.sentencizer.nlp
+            self.sentencizer_enabled = True
 
     def doc(self, pid=None, uid=None) -> str:
         """Return the full text document for a single ID.
@@ -96,13 +110,13 @@ class CORD19(PaperIndexer):
                 text = self.prep(line["text"])
                 yield text
 
-    def build(self, pids: List[Pid], minlen: int = 15) -> Sampler:
+    def build(self, pids: List[Pid], minlen=16, maxlen=1024) -> Sampler:
         """Return a Sampler object of papers with texts transformed to sentences."""
+        if not self.sentencizer_enabled:
+            self.init_sentencizer()
         X = Sampler(pids)
         docs = self.docs(pids, uids=None)
         tokenize = self.sentencizer
-        is_sentence = self.sentencizer.is_sentence
-
         store = X.init()
         for pid in store:
             for sent in tokenize(next(docs)):
@@ -110,15 +124,17 @@ class CORD19(PaperIndexer):
                 if text in store[pid]:
                     continue
                 seqlen = len(sent)  # number of tokens.
-                if seqlen < minlen:
-                    continue
-                if not is_sentence(sent):
+                if not minlen <= seqlen <= maxlen:
                     continue
                 X.include(pid, seqlen, text)
 
         return X
 
-    def batch(self, pids: List[Pid], minlen=15, workers=4, build=None) -> SentenceStore:
+    def batch(
+        self, pids: List[Pid], minlen=16, maxlen=1024, workers=4, build=None,
+    ) -> SentenceStore:
+        if not self.sentencizer_enabled:
+            self.init_sentencizer()
         maxsize = len(pids)
         workers = cpu_count() if workers is None else workers
         build = self.build if build is None else build
@@ -132,7 +148,7 @@ class CORD19(PaperIndexer):
             batches: List[Sampler] = []
             with concurrent.futures.ThreadPoolExecutor(workers) as pool:
                 future_to_pids = {
-                    pool.submit(build, job, minlen): job for job in jobs
+                    pool.submit(build, job, minlen, maxlen): job for job in jobs
                 }
                 for future in concurrent.futures.as_completed(future_to_pids):
                     pids = future_to_pids[future]
@@ -267,5 +283,5 @@ class SentenceDataset(Dataset):
     def __len__(self) -> int:
         return self.max_len
 
-    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
+    def __getitem__(self, idx: int) -> torch.Tensor:
         return torch.tensor(self.encoded[idx], dtype=torch.long)

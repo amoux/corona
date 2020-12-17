@@ -382,12 +382,11 @@ def load_store(type_store: str, store_name: str = None) -> Any:
             if type_store == 'cord':
                 from .dataset import CORD19
                 return CORD19(**db['init'])
-            data = db['data']
-            pids = list(data.keys())
-            sentence_store = SentenceStore(
-                pids, store=data, meta=db['meta'], **db['kwargs'])
-            sentence_store.init_args = db['init']
-        return sentence_store
+
+            seqlen = db['kwargs']['seqlen']
+            sent_store = SentenceStore(seqlen, store=db['data'], meta=db['meta'])
+            sent_store.init_args = db['init']
+        return sent_store
 
     if type_store == 'embed':
         path = cache_dir.joinpath(STORE_FILE_NAMES['embed'])

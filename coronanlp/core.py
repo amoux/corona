@@ -3,7 +3,7 @@ import random
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import (Callable, Dict, Iterable, List, NamedTuple, Optional,
+from typing import (Any, Callable, Dict, Iterable, List, NamedTuple, Optional,
                     Tuple, Union)
 
 import numpy as np  # type: ignore
@@ -65,6 +65,69 @@ class GoldPidsOutput(List[GoldPids]):
         return '{}(num_tasks: {}, size: {})'.format(
             self.__class__.__name__, len(self), tuple(self.sizes()),
         )
+
+
+class Length:
+    def __init__(self, meta):
+        self._meta = meta
+        self.minlen = 0
+        self.maxlen = 0
+        self.avg_seqlen = 0.0
+        self.pvariance = 0.0
+        self.pstdev = 0.0
+        self.counts = 0
+        self._median = 0
+        self._mode = 0
+
+    def lengths(self, seq_type='tokens'):
+        m = self._meta
+        if seq_type == 'tokens':
+            for i in m:
+                yield i.seqlen
+        if seq_type == 'string':
+            for i in m:
+                yield i.strlen
+
+    def compute_stats(self, seq_type='tokens'):
+        L = list(self.lengths(seq_type))
+        n = len(L)
+        mu = sum(L) / n
+        var = sum((x - mu) ** 2 for x in L) / n
+        L.sort()
+        if n % 2:
+            self._median = L[round(0.5 * (n - 1))]
+        else:
+            i = round(0.5 * n)
+            self._median = 0.5 * (L[i - 1] + L[i])
+
+        self._mode = max((L.count(x), x) for x in set(L))[1]
+        self.avg_seqlen = mu
+        self.pstdev = var ** 0.5
+        self.pvariance = var
+        self.maxlen = L[-1]
+        self.minlen = L[0]
+        self.counts = n
+
+    def min(self) -> int:
+        return self.minlen
+
+    def max(self) -> int:
+        return self.maxlen
+
+    def mode(self) -> int:
+        return self._mode
+
+    def median(self) -> int:
+        return self._median
+
+    def mean(self) -> float:
+        return self.avg_seqlen
+
+    def std(self) -> float:
+        return self.pstdev
+
+    def var(self) -> float:
+        return self.pvariance
 
 
 @dataclass
@@ -174,34 +237,23 @@ def merge_samplers(samplers: List[Sampler]) -> Sampler:
     return root
 
 
-class SentenceStore:
+class SentenceStore(Length):
     def __init__(
         self,
-        pids: List[Pid],
-        counts: int,
-        maxlen: int,
         seqlen: int,
         store: Dict[Pid, List[str]],
         meta: List[MetaData],
+        seq_type: str = 'tokens',
     ) -> None:
-        self.pids = pids
-        self.counts = counts
+        super(SentenceStore, self).__init__(meta)
         self.seqlen = seqlen
-        self.maxlen = maxlen
         self._store = store
-        self._meta = meta
-        self._minlen: Optional[int] = None
-        self.avg_seqlen = round(self.seqlen / self.counts, 2)
+        self.pids = list(store.keys())
         self.num_papers = len(self.pids)
-        self.num_sents = self.counts
-        self.num_tokens = self.seqlen
-        self.init_args = None
-
-    @property
-    def minlen(self) -> Optional[int]:
-        if self._minlen is None:
-            self._minlen = min(map(lambda i: i.seqlen, self._meta))
-        return self._minlen
+        self.num_sents = len(meta)
+        self.num_tokens = seqlen
+        self.init_args: Optional[Dict[str, Any]] = None
+        self.compute_stats(seq_type)
 
     def decode(self, sids: Union[Sid, List[Sid]]) -> Union[Pid, List[Pid]]:
         """Decode an single or an iterable of sentence-ids to paper-ids."""
@@ -307,7 +359,6 @@ class SentenceStore:
             sampler = merge_samplers(samplers=sampler)
         if isinstance(sampler, Sampler):
             return SentenceStore(
-                sampler.pids, sampler.counts, sampler.maxlen,
                 sampler.seqlen, sampler._store, sampler._meta,
             )
 
@@ -350,7 +401,7 @@ class SentenceStore:
             'text_key': cord19.text_key,
             'index_start': cord19.index_start,
             'sort_first': cord19.is_files_sorted,
-            'nlp_model': cord19.sentencizer.nlp_model,
+            'nlp_model': cord19.sentencizer.nlp_model
         }
 
     def init_cord19_dataset(self):
@@ -433,6 +484,6 @@ class SentenceStore:
                 yield sent
 
     def __repr__(self):
-        s = '{}(avg_seqlen: {} | num_papers: {:,} | num_sents: {:,} | num_tokens: {:,})'
+        s = '{}(avg_seqlen: {:.2f} | num_papers: {:,} | num_sents: {:,} | num_tokens: {:,})'
         return s.format(self.__class__.__name__, self.avg_seqlen,
                         self.num_papers, self.num_sents, self.num_tokens)
