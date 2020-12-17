@@ -23,4 +23,5 @@ except ModuleNotFoundError:
 else:
     globals()["faiss"] = _faiss_lib
     from .indexing import fit_index_ivf_hnsw
+    from .indexing import fit_index_ivf_fpq
     from .retrival import tune_ids

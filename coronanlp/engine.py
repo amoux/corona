@@ -1,12 +1,13 @@
 
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Union
 
-import faiss
-import numpy as np
+import faiss  # type: ignore
+import numpy as np  # type: ignore
 import torch
-from transformers import (BertForQuestionAnswering, BertTokenizer,
-                          PreTrainedModel, PreTrainedTokenizerBase,
-                          QuestionAnsweringPipeline, SquadExample)
+from transformers import (BertForQuestionAnswering,  # type: ignore
+                          BertTokenizer, PreTrainedModel,
+                          PreTrainedTokenizerBase, QuestionAnsweringPipeline,
+                          SquadExample)
 
 from .core import SentenceStore
 from .dataset import CORD19
@@ -151,7 +152,7 @@ class ScibertQuestionAnswering:
     def __init__(
             self,
             sents: Union[str, SentenceStore],
-            index: Union[str, faiss.IndexIVFFlat],
+            index: Union[str, faiss.Index],
             encoder: Union[str, SentenceEncoder],
             cord19: Optional[CORD19] = None,
             model: Optional[Union[BertForQuestionAnswering, PreTrainedModel]] = None,
@@ -184,7 +185,7 @@ class ScibertQuestionAnswering:
         assert isinstance(self.sents, SentenceStore)
         self.index = faiss.read_index(index) \
             if isinstance(index, str) else index
-        assert isinstance(self.index, faiss.IndexIVFFlat)
+        assert isinstance(self.index, faiss.Index)
         self.encoder = encoder if isinstance(encoder, SentenceEncoder) \
             else SentenceEncoder.from_pretrained(encoder, device=encoder_device)
         if cord19 is None:
@@ -253,7 +254,7 @@ class ScibertQuestionAnswering:
             'question_answering_model_device': self.model.device
         }
 
-    def sentencizer(self, text: Union[str, List[str]]) -> List[str]:
+    def sentencizer(self, text: Union[str, List[str]]):
         if isinstance(text, list):
             text = ' '.join(text)
         return [sent.text for sent in self._sentencizer(text)]
