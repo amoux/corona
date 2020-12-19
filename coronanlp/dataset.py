@@ -13,6 +13,7 @@ from transformers import PreTrainedTokenizer  # type: ignore
 
 from .core import Sampler, SentenceStore
 from .indexing import PaperIndexer
+from .parser import Paper, parse
 from .tokenizer import SpacySentenceTokenizer
 from .utils import DataIO, clean_tokenization, load_store, normalize_whitespace
 
@@ -165,8 +166,11 @@ class CORD19(PaperIndexer):
         sentence_store.attach_init_args(self)
         return sentence_store
 
-    def __call__(self, id: Union[Pid, Uid, List[Pid], List[Uid]],
-                 ) -> Union[Dict[str, Any], List[Dict[str, Any]], None]:
+    def __call__(
+        self,
+        id: Union[Uid, Pid, List[Any]],
+        parsed: bool = False,
+    ) -> Union[Paper, Dict[str, Any], List[Paper], List[Dict[str, Any]], None]:
         """Retrive a paper from disk and return a dict obj of (key,value) pairs.
 
         * Example usage:
@@ -179,11 +183,19 @@ class CORD19(PaperIndexer):
         ```
         """
         if isinstance(id, (Pid, Uid)):
-            args = (id, None) if isinstance(id, Pid) else (None, id)
-            return self.load_paper(*args)
+            pid = id if isinstance(id, Pid) else self.uid2pid[id]
+            document = self.load_paper(pid, uid=None)
+            if parsed:
+                paper = parse(pid, document)
+                return paper
+            return document
         if isinstance(id, list) and isinstance(id[0], (Pid, Uid)):
-            args = (id, None) if isinstance(id[0], Pid) else (None, id)
-            return self.load_papers(*args)
+            pids = id if isinstance(id[0], Pid) else self._encode(id)
+            documents = self.load_papers(pids, uids=None)
+            if parsed:
+                papers = [parse(i, d) for i, d in zip(pids, documents)]
+                return papers
+            return documents
         return None
 
     @staticmethod
