@@ -1,7 +1,7 @@
-from pathlib import Path
+from pathlib import Path  # type: ignore
 from typing import Dict, List, Optional, Tuple, Union
 
-from tqdm.auto import tqdm
+from tqdm.auto import tqdm  # type: ignore
 
 from .core import Sampler, SentenceStore
 from .dataset import CORD19

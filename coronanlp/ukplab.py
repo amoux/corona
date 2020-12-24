@@ -154,8 +154,8 @@ class SentenceEncoder(torch.nn.Module):
     def encode(
         self,
         sentences: Union[List[str], Sampler, SentenceStore],
-        max_length: int = 128,
-        batch_size: int = 9,
+        max_length: int = 256,
+        batch_size: int = 8,
         show_progress: bool = True,
         return_tensors: str = 'np',
     ) -> Union[np.ndarray, torch.Tensor]:
@@ -170,8 +170,10 @@ class SentenceEncoder(torch.nn.Module):
         if show_progress:
             batches = tqdm(batches, desc='batch')
         tokenize = self.tokenizer.tokenize
-        model_max_length = max_length if max_length is not None \
-            else self.tokenizer.model_max_length
+        max_seq_length = max_length if max_length is not None \
+            else self.tokenizer.max_seq_length
+        if max_seq_length >= 512:
+            max_seq_length = 500
 
         self.transformer.eval()
         embeddings = []
@@ -184,7 +186,7 @@ class SentenceEncoder(torch.nn.Module):
                 maxlen = max(maxlen, len(tokens))
                 splits.append(tokens)
 
-            max_length = min(maxlen, model_max_length) + 2
+            max_length = min(maxlen, max_seq_length) + 2
             batch_inputs = self.tokenizer(
                 text=splits,
                 padding=True,

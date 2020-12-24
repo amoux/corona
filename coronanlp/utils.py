@@ -8,9 +8,9 @@ from pathlib import Path
 from string import punctuation
 from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union
 
-import numpy as np
-from nltk.tokenize import word_tokenize
-from spacy import displacy
+import numpy as np  # type: ignore
+from nltk.tokenize import word_tokenize  # type: ignore
+from spacy import displacy  # type: ignore
 
 QuestionAnsweringOutput = TypeVar('QuestionAnsweringOutput')
 

@@ -132,7 +132,7 @@ class CORD19(PaperIndexer):
         return X
 
     def batch(
-        self, pids: List[Pid], minlen=16, maxlen=1024, workers=4, build=None,
+        self, pids: List[Pid], minlen=16, maxlen=1024, workers=7, build=None,
     ) -> SentenceStore:
         if not self.sentencizer_enabled:
             self.init_sentencizer()
