@@ -157,7 +157,7 @@ def extract_titles_fast(
 ) -> Dict[Pid, str]:
     """Extract titles from the CORD-19-Dataset (Fast).
 
-    :param sample: (optional) An existing list of integer ids (paper indices).
+    :param sample: (optional) An existing list of integer ids (`PIDs`).
         Otherwise if None; ids extracted from the `COR19Dataset` instance.
     :param minlen: Minimum title string length (filtered without punctuation).
     :param maxids: Number of ids to slice, if `-1` then all ids are used.
@@ -232,14 +232,16 @@ def tune_ids(
 
     # Depending on the sample size you can tune for all tasks
     # or a few - in this example we only do the first five:
-    n = 5
-    tasklist = TaskList()[:n]
-    target_size = 500
-    gold_pids = tune_ids(encoder, title_map, tasklist, target_size)
+    num_tasks = 5
+    tasklist = TaskList()[:num_tasks]
+
+    # target size can be set to a specific value, e.g `500` or:
+    target_size = len(title_map) // num_tasks
+    tuned = tune_ids(encoder, title_map, tasklist, target_size)
     ...
     # GoldPidsOutput(num_tasks: 5, size: (475, 480, 490, 496, 496))
 
-    gold_pids[::]
+    tuned[::]
     ...
     # [GoldPids(task_id: 1, size: 475, mindist: 11.9891, maxdist: 37.1647),
     #  GoldPids(task_id: 2, size: 480, mindist: 15.0586, maxdist: 51.9199),
@@ -247,8 +249,11 @@ def tune_ids(
     #  ... ]
     ```
     """
+    task_list: TaskList
     if tasklist is None:
-        tasklist = TaskList()
+        task_list = TaskList()
+    else:
+        task_list = tasklist
 
     titles = list(title_map.values())
     sample = list(title_map.keys())
@@ -256,7 +261,7 @@ def tune_ids(
 
     def get_k_targets() -> List[int]:
         targets = []
-        for task in tasklist:
+        for task in task_list:
             ntasks = len(task.all())
             goal = round(target_size / ntasks) - ntasks % 2
             maxk = len(sample) - target_size
@@ -283,7 +288,7 @@ def tune_ids(
     index_flat.add(embedded_titles)
 
     output = GoldPidsOutput()
-    for i, task in enumerate(tasklist):
+    for i, task in enumerate(task_list):
         task_embed = encoder.encode(
             task.all(), batch_size=16, show_progress=False,
         )
