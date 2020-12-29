@@ -64,8 +64,10 @@ def frequency_summarizer(text: Union[str, List[str]],
             else:
                 vocab[token.text] += 1
 
-    for word in vocab:
-        vocab[word] = vocab[word] / max(vocab.values())
+    features = {}
+    maxval = max(vocab.values())
+    for word, frequency in vocab.items():
+        features[word] = frequency / maxval
 
     score = {}
     for sent in doc.sents:
@@ -74,9 +76,9 @@ def frequency_summarizer(text: Union[str, List[str]],
                 continue
             if token.text in vocab:
                 if sent not in score:
-                    score[sent] = vocab[token.text]
+                    score[sent] = features[token.text]
                 else:
-                    score[sent] += vocab[token.text]
+                    score[sent] += features[token.text]
 
     nlargest = sorted(score, key=score.get, reverse=True)[:topk]
     summary = " ".join([sent.text for sent in nlargest])

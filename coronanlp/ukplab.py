@@ -151,6 +151,10 @@ class SentenceEncoder(torch.nn.Module):
         )
         self.tokenizer = tokenizer
 
+    @property
+    def model(self):
+        return self.transformer.base_model
+
     def encode(
         self,
         sentences: Union[List[str], Sampler, SentenceStore],

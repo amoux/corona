@@ -1,4 +1,6 @@
 
+from dataclasses import asdict as _asdict
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Union
 
 import faiss  # type: ignore
@@ -10,10 +12,10 @@ from transformers import (BertTokenizerFast, PreTrainedModel,
                           PreTrainedTokenizerBase, QuestionAnsweringPipeline,
                           SquadExample)
 
+from .compressor import Compressor
 from .core import SentenceStore
 from .dataset import CORD19
-from .summarization import (BertSummarizer, BertSummarizerArguments,
-                            frequency_summarizer)
+from .summarization import frequency_summarizer
 from .tokenizer import SpacySentenceTokenizer
 from .ukplab import SentenceEncoder
 
@@ -32,19 +34,20 @@ class InvalidModelNameOrPathError(ValueError):
     pass
 
 
-class QuestionAnsweringArguments(NamedTuple):
-    X: Optional[SquadExample] = None
-    question: Optional[Union[str, List[str]]] = None
-    context: Optional[Union[str, List[str]]] = None
-    topk: int = 10
-    doc_stride: int = 128
-    max_answer_len: int = 15
-    max_seq_len: int = 384
-    max_question_len: int = 64
-    handle_impossible_answer: bool = True
+@dataclass
+class QuestionAnsweringArguments:
+    X: Optional[SquadExample] = field(default=None)
+    question: Optional[Union[str, List[str]]] = field(default=None)
+    context: Optional[Union[str, List[str]]] = field(default=None)
+    topk: int = field(default=10)
+    doc_stride: int = field(default=128)
+    max_answer_len: int = field(default=15)
+    max_seq_len: int = field(default=384)
+    max_question_len: int = field(default=64)
+    handle_impossible_answer: bool = field(default=True)
 
-    def todict(self) -> Dict[str, Any]:
-        return self._asdict()
+    def asdict(self):
+        return _asdict(self)
 
 
 __docstring = QuestionAnsweringPipeline.__call__.__doc__
@@ -172,10 +175,7 @@ class ScibertQuestionAnsweringConfig:
             nlp_model: str = 'en_core_sci_sm',
             model_device: Optional[str] = None,
             encoder_device: Optional[str] = None,
-            summarizer_hidden: int = -2,
-            summarizer_reduce: str = 'mean',
-            lengths_from_sents: bool = False,
-            summarizer_kwargs: Union[Dict[str, Any], BertSummarizerArguments] = {},
+            **compressor_kwargs
     ) -> None:
         """
         :param summarizer_hidden: Determines the hidden layer to use for
@@ -261,6 +261,9 @@ class ScibertQuestionAnsweringConfig:
         else:
             raise InvalidModelNameOrPathError
 
+        self.compressor = Compressor(
+            model=self.model.base_model, **compressor_kwargs)
+
         # HF QAPipeline uses index, -1 is the default for CPU.
         device_index = -1
         if self.model.device.index is not None \
@@ -270,22 +273,23 @@ class ScibertQuestionAnsweringConfig:
         self.pipeline = QuestionAnsweringPipeline(
             model=self.model, tokenizer=self.tokenizer, device=device_index
         )
-
-        if isinstance(summarizer_kwargs, dict):
-            self.summarizer_kwargs = BertSummarizerArguments(
-                **summarizer_kwargs)
-        elif isinstance(summarizer_kwargs, BertSummarizerArguments):
-            self.summarizer_kwargs = summarizer_kwargs
-        if lengths_from_sents:
-            self.summarizer_kwargs.max_length = self.sents.max()
-            self.summarizer_kwargs.min_length = self.sents.min()
         self._freq_summarizer = frequency_summarizer
-        self._bert_summarizer = BertSummarizer(
-            model_name_or_path=model_name_or_path,
-            tokenizer=self.tokenizer,
-            hidden=summarizer_hidden,
-            reduce_option=summarizer_reduce
+        self.device = self.model.device
+
+    def _bert_summarizer(self, sentences: List[str], topk=None, max_length=None):
+        max_length = self.max_seq_length if max_length is None else max_length
+        inputs = self.tokenizer(
+            sentences,
+            max_length=max_length,
+            padding=True,
+            truncation=True,
+            return_tensors="pt"
         )
+        inputs = inputs.to(self.device)
+        inputs.update({'topk': topk})
+        outputs = self.compressor(**inputs)
+        summary = [sentences[k] for k in outputs['topk']]
+        return " ".join(summary)
 
 
 class ScibertQuestionAnswering(ScibertQuestionAnsweringConfig):
@@ -303,14 +307,13 @@ class ScibertQuestionAnswering(ScibertQuestionAnsweringConfig):
     @property
     def all_model_devices(self) -> Dict[str, Any]:
         return {
-            'summarizer_model_device': self._bert_summarizer.model.device,
+            'summarizer_model_device': self.model.device,
             'sentence_transformer_model_device': self.encoder.device,
             'question_answering_model_device': self.model.device
         }
 
     def pooling_config(self, type: str = 'mean') -> None:
         """Pooling configuration for encoding sentence embeddings.
-
         :param type: Type of encoding: `mean`, `sqrt`, `max`, `cls`
         """
         params = POOLING_PARAMS
@@ -326,37 +329,60 @@ class ScibertQuestionAnswering(ScibertQuestionAnsweringConfig):
             text = ' '.join(text)
         return [sent.text for sent in self._sentencizer(text)]
 
-    def encode_features(self, texts: Union[str, List[str]], max_length=None) -> np.ndarray:
+    def encode_features(
+        self, texts: Union[str, List[str]], max_length: Optional[int] = None,
+    ) -> np.ndarray:
         sentences = self.sentencizer(texts)
         if max_length is None:
             max_length = self.max_seq_length
         embedding = self.encoder.encode(
-            sentences, max_length, show_progress=False)
+            sentences, max_length=max_length, show_progress=False)
         return embedding
 
-    def similar(self, query: Union[str, List[str]], top_p=15, nprobe=64,
-                ) -> Tuple[np.ndarray, np.ndarray]:
+    def similar(
+        self, query: Union[str, List[str]], top_p: int = 15, nprobe: int = 64,
+    ) -> Tuple[np.ndarray, np.ndarray]:
         embedding = self.encode_features(query)
         self.index.nprobe = nprobe
         D, I = self.index.search(embedding, k=top_p)
         return D, I
 
-    def compress(self, texts, mode='bert'):
+    def compress(self, texts: List[str], mode='bert') -> str:
+        summary = ''
         if mode == 'bert':
-            summarizer_inputs = self.summarizer_kwargs
-            if isinstance(texts, list):
-                summarizer_inputs.body = ' '.join(texts)
-            return self._bert_summarizer(**summarizer_inputs.todict())
+            summary = self._bert_summarizer(texts)
         if mode == 'freq':
-            return self._freq_summarizer(texts, nlp=self.nlp)
+            summary = self._freq_summarizer(texts, nlp=self.nlp)
+        return summary
 
-    def sample(self, question: Union[str, List[str]], context: Union[str, List[str]],
-               ) -> SquadExample:
-        return self.pipeline.create_sample(question=question, context=context)
+    def squad_sample(
+        self, question: Union[str, List[str]], context: Union[str, List[str]],
+    ) -> SquadExample:
+        return self.pipeline.create_sample(question, context=context)
 
-    def answer(self, question: str, topk=5, top_p=15, nprobe=16, mode='bert', **kwargs):
+    def answer(
+        self,
+        question: str,
+        topk: int = 5,
+        top_p: int = 15,
+        nprobe: int = 16,
+        mode: str = 'bert',
+        doc_stride: int = 1,
+        max_answer_len: int = 128,
+        max_seq_len: int = 384,
+        max_question_len: int = 64,
+        handle_impossible_answer: bool = True,
+    ) -> QuestionAnsweringOutput:
+
+        qa_kwargs = QuestionAnsweringArguments(
+            topk=topk,
+            doc_stride=doc_stride,
+            max_answer_len=max_answer_len,
+            max_seq_len=max_seq_len,
+            max_question_len=max_question_len,
+            handle_impossible_answer=handle_impossible_answer,
+        )
         # Reduce the chance of getting similar "questions", we want sentences.
-        kwargs.update({'topk': topk})
         q_as_query = question.replace('?', '').strip()
         dist, sids = self.similar(q_as_query, top_p, nprobe)
 
@@ -372,23 +398,23 @@ class ScibertQuestionAnswering(ScibertQuestionAnsweringConfig):
         question, context = [self.sentencizer(x) for x in (question, context)]
         inputs = (question, context, sids, dist)
         predictions.attach_(*inputs)
-        squad_example = self.sample(question, context)
-        params = QuestionAnsweringArguments(X=squad_example, **kwargs)
-        for output in self.pipeline(**params.todict()):
+        qa_kwargs.X = self.squad_sample(question, context)
+
+        for output in self.pipeline(**qa_kwargs.asdict()):
             predictions.append(ModelOutput(**output))
 
         return predictions
 
-    def __call__(self, question: str, topk=5, top_p=25, nprobe=128, *args, **kwargs):
-        return self.answer(question, topk, top_p, nprobe, *args, **kwargs)
+    def __call__(self, *args, **kwargs):
+        return self.answer(*args, **kwargs)
 
 
 def preds_to_df(pred, engine: ScibertQuestionAnswering) -> DataFrame:
     assert isinstance(engine.cord19, CORD19)
     data: Dict[str, List] = {
         'sid': [], 'pid': [], 'dist': [], 'in_ctx': [], 'query': [],
-        'answer': [], 'score': [], 'title': [], 'sent': []
-    }
+        'answer': [], 'score': [], 'title': [], 'sent': []}
+
     (n, d), k = pred.shape, len(pred)
     queries = [pred.q] * k if n == 1 else pred.q * k
     annexes = list(zip(queries, pred.answers, pred.scores()))
@@ -407,4 +433,5 @@ def preds_to_df(pred, engine: ScibertQuestionAnswering) -> DataFrame:
             ]
             for col, row in zip(data, rows):
                 data[col].append(row)
+
     return DataFrame(data=data)
