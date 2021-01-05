@@ -22,7 +22,7 @@ def fit_index_ivf_fpq(embedding: np.ndarray, k=8, nlist=4096, m=32):
     return index_fpq
 
 
-def fit_index_ivf_hnsw(embedding: np.array,
+def fit_index_ivf_hnsw(embedding: np.ndarray,
                        metric: Union[str, int] = "l2",
                        nlist: Optional[int] = None,
                        m: int = 32):
@@ -130,6 +130,9 @@ class PaperIndexer:
 
     def _load_data(self, uid: Uid) -> Dict[str, Any]:
         path = self._index_dirpath(self.uid2pid[uid])
+        if path is None:
+            error = 'Tried loading file but UID is invalid or does not exist: {}'
+            raise Exception(error.format((uid, type(uid))))
         fp = path.joinpath(f"{uid}{self.extension}")
         with fp.open("rb") as file:
             return json.load(file)
@@ -185,7 +188,9 @@ class PaperIndexer:
                 return list(range(splits[s - 1] + 1, splits[s] + 1))
 
     def load_paper(
-        self, pid: Optional[Pid] = None, uid: Optional[Uid] = None,
+        self,
+        pid: Optional[Pid] = None,
+        uid: Optional[Uid] = None,
     ) -> Dict[str, Any]:
         """Load a single paper and data by either index or paper ID."""
         if pid is not None and isinstance(pid, Pid):
@@ -194,8 +199,10 @@ class PaperIndexer:
         return self._load_data(uid)
 
     def load_papers(
-        self, pids: Optional[List[Pid]] = None, uids: Optional[List[Uid]] = None,
-    ) -> List[Dict[str, Any]]:
+        self,
+        pids: Optional[List[Pid]] = None,
+        uids: Optional[List[Uid]] = None,
+    ) -> Optional[List[Dict[str, Any]]]:
         """Load many papers and data by either pids or paper ID's."""
         papers = None
         if pids is not None:

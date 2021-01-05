@@ -144,7 +144,6 @@ class ScibertQuestionAnsweringConfig:
 
         self.compressor = Compressor(
             model=self.model.base_model, **compressor_kwargs)
-        self.compress_ratio = self.compressor.cluster.ratio
 
         # HF QAPipeline uses index, -1 is the default for CPU.
         device_index = -1
@@ -157,6 +156,9 @@ class ScibertQuestionAnsweringConfig:
         )
         self._freq_summarizer = frequency_summarizer
         self.device = self.model.device
+
+    def compress_ratio(self) -> float:
+        return self.compressor.cluster.ratio
 
     def _bert_summarizer(self, sentences: List[str], topk=None, max_length=None):
         max_length = self.max_seq_length if max_length is None else max_length
@@ -234,7 +236,7 @@ class ScibertQuestionAnswering(ScibertQuestionAnsweringConfig):
         if mode == 'bert':
             summary = self._bert_summarizer(texts)
         if mode == 'freq':
-            ratio = self.compress_ratio
+            ratio = self.compress_ratio()
             summary = self._freq_summarizer(texts, ratio, nlp=self.nlp)
         return summary
 
