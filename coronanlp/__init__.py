@@ -5,8 +5,7 @@ from .core import Sampler, SentenceStore, merge_samplers
 from .dataset import CORD19, SentenceDataset
 from .indexing import PaperIndexer, Path
 from .retrival import (common_tokens, extract_questions, extract_titles_fast,
-                       extract_titles_slow)
-from .summarization import BertSummarizer, frequency_summarizer
+                       extract_titles_slow, frequency_summarizer)
 from .tasks import TaskList
 from .tokenizer import SpacySentenceTokenizer
 from .ukplab import SentenceEncoder, semantic_search
@@ -22,6 +21,5 @@ except ModuleNotFoundError:
     print(sys.exc_info())
 else:
     globals()["faiss"] = _faiss_lib
-    from .indexing import fit_index_ivf_hnsw
-    from .indexing import fit_index_ivf_fpq
+    from .indexing import fit_index_ivf_fpq, fit_index_ivf_hnsw
     from .retrival import tune_ids

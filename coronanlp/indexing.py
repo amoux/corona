@@ -9,8 +9,8 @@ Pid = int
 Uid = str
 
 
-def fit_index_ivf_fpq(embedding, k=8, nlist=4096, m=32):
-    import faiss
+def fit_index_ivf_fpq(embedding: np.ndarray, k=8, nlist=4096, m=32):
+    import faiss  # type: ignore
     _, d = embedding.shape
     innerprod = faiss.METRIC_INNER_PRODUCT
     quantizer = faiss.IndexHNSWFlat(d, m, innerprod)
@@ -22,17 +22,16 @@ def fit_index_ivf_fpq(embedding, k=8, nlist=4096, m=32):
     return index_fpq
 
 
-def fit_index_ivf_hnsw(
-    embedding: np.array,
-    metric: Union[str, int, "faiss.METRIC"] = "l2",
-    nlist: Optional[int] = None,
-    m: int = 32,
-) -> "faiss.IndexIVFFlat":
+def fit_index_ivf_hnsw(embedding: np.array,
+                       metric: Union[str, int] = "l2",
+                       nlist: Optional[int] = None,
+                       m: int = 32):
     import faiss  # type: ignore
     if isinstance(metric, str):
-        if metric.lower().strip() == "l1":
+        metric_name = metric.lower().strip()
+        if metric_name == "l1":
             metric = faiss.METRIC_L1
-        elif metric.lower().strip() == "l2":
+        elif metric_name == "l2":
             metric = faiss.METRIC_L2
     assert isinstance(metric, int)
 
@@ -65,8 +64,8 @@ class PaperIndexer:
         if not isinstance(source, list):
             source = [source]
         file_paths = []
-        for path in source:
-            path = Path(path)
+        for root in source:
+            path = Path(root)
             if path.is_dir():
                 files = [file for file in path.glob(f"*{extension}")]
                 if sort_first:
@@ -85,7 +84,7 @@ class PaperIndexer:
         else:
             self.splits = self.bins
 
-    def _map_files_to_ids(self, json_files: List[str]) -> None:
+    def _map_files_to_ids(self, json_files: List[Path]) -> None:
         for pid, file in enumerate(json_files, self.index_start):
             uid = file.name.replace(self.extension, "")
             try:
@@ -106,6 +105,7 @@ class PaperIndexer:
         # returning the id to path closest to its maximum split size. A split
         # is based on the cumulative sum of each bin (bin: number of files in
         # a directory), after the first item value.
+
         def nearest_mid(start: int, end: int, x: List[int], y: int) -> int:
             m = start + ((end - start) // (x[end] - x[start])) * (y - x[start])
             return m
@@ -150,14 +150,16 @@ class PaperIndexer:
             return self.paths[0].name
         return [p.name for p in self.paths]
 
-    def file_path(self, id: Union[Pid, Uid]) -> Path:
+    def file_path(self, id: Union[Pid, Uid]) -> Optional[Path]:
         """Return the path to file from an integer or string ID."""
         if isinstance(id, Uid):
             id = self.uid2pid[id]
         assert isinstance(id, Pid)
         file = self.pid2uid[id]
         path = self._index_dirpath(id)
-        return path.joinpath(file + self.extension)
+        if path is not None:
+            return path.joinpath(file + self.extension)
+        return None
 
     def sample(self, k: int = None, s: int = None, seed: int = None):
         """Return a sample (all|random k) or split of paper ID's.
@@ -182,29 +184,33 @@ class PaperIndexer:
             if s > 0:
                 return list(range(splits[s - 1] + 1, splits[s] + 1))
 
-    def load_paper(self, pid: Optional[Pid] = None, uid: Optional[Uid] = None,
-                   ) -> Dict[str, Any]:
+    def load_paper(
+        self, pid: Optional[Pid] = None, uid: Optional[Uid] = None,
+    ) -> Dict[str, Any]:
         """Load a single paper and data by either index or paper ID."""
         if pid is not None and isinstance(pid, Pid):
             uid = self.pid2uid[pid]
         assert isinstance(uid, Uid)
         return self._load_data(uid)
 
-    def load_papers(self, pids: Optional[List[Pid]] = None, uids: Optional[List[Uid]] = None,
-                    ) -> List[Dict[str, Any]]:
+    def load_papers(
+        self, pids: Optional[List[Pid]] = None, uids: Optional[List[Uid]] = None,
+    ) -> List[Dict[str, Any]]:
         """Load many papers and data by either pids or paper ID's."""
+        papers = None
         if pids is not None:
             if isinstance(pids, list) and isinstance(pids[0], Pid):
                 uids = self._decode(pids)
-                return [self._load_data(pid) for pid in uids]
+                papers = [self._load_data(pid) for pid in uids]
             else:
                 raise ValueError("Indices not of type List[int].")
 
         elif uids is not None:
             if isinstance(uids, list) and isinstance(uids[0], Uid):
-                return [self._load_data(pid) for pid in uids]
+                papers = [self._load_data(pid) for pid in uids]
             else:
                 raise ValueError("Paper ID's not of type List[str].")
+        return papers
 
     def __getitem__(self, id: Union[Pid, Uid]) -> Union[Uid, Pid, None]:
         if isinstance(id, Pid):

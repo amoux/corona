@@ -4,9 +4,10 @@ from multiprocessing import cpu_count
 from typing import Dict, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
-import spacy
-from spacy.language import Language
-from tqdm.auto import tqdm
+from numpy.lib.utils import source  # type: ignore
+import spacy  # type: ignore
+from spacy.language import Language  # type: ignore
+from tqdm.auto import tqdm  # type: ignore
 
 from .core import GoldPids, GoldPidsOutput, Sampler, SentenceStore
 from .dataset import CORD19
@@ -43,9 +44,9 @@ def common_tokens(
         else spacy.load('en_core_web_sm', disable=['tagger'])
 
     counter = {}
-    for string in texts:
-        string = clean_punctuation(string)
-        for token in nlp(string):
+    for text in texts:
+        text = clean_punctuation(text)
+        for token in nlp(text):
             if token.is_stop:
                 continue
             token = token.lemma_ if not lowercase \
@@ -60,6 +61,53 @@ def common_tokens(
     common = sorted(
         counter.items(), key=lambda k: k[1], reverse=True)
     return common
+
+
+def frequency_summarizer(texts: List[str], ratio: float = 0.3, nlp=None) -> str:
+    """Frequency Based Summarization.
+
+    - Words are lowercased.
+    - Stopwords and punctuation ignored.
+
+    :param text: Sequences of strings or an iterable of string sequences.
+    :param ratio: Summary size from the topmost leading scored sentences.
+        The expected output size is based on: `topk = len(texts) * ratio`.
+    """
+    if nlp is None:
+        nlp = spacy.load("en_core_web_sm")
+
+    words = {}
+    for doc in nlp.pipe(texts):
+        for token in doc:
+            if token.is_stop or token.is_punct:
+                continue
+            word = token.text.lower()
+            if word not in words:
+                words[word] = 1
+            else:
+                words[word] += 1
+
+    features = {}
+    max_freq = max(words.values())
+    for word, frequency in words.items():
+        features[word] = frequency / max_freq
+
+    scores = {}
+    for doc in nlp.pipe(texts):
+        for sent in doc.sents:
+            for token in sent:
+                word = token.text.lower()
+                if word not in words:
+                    continue
+                if sent not in scores:
+                    scores[sent] = features[word]
+                else:
+                    scores[sent] += features[word]
+
+    topk = max(int(len(scores) * ratio), 1)
+    nlargest = sorted(scores, key=scores.get, reverse=True)[:topk]
+    summary = " ".join([sent.text for sent in nlargest])
+    return summary
 
 
 def extract_questions(

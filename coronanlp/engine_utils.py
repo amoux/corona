@@ -30,8 +30,8 @@ class ModelOutput(NamedTuple):
 
 
 class QuestionAnsweringOutput(List[ModelOutput]):
-    q: Optional[Union[str, List[str]]] = None
-    c: Optional[Union[str, List[str]]] = None
+    q: Optional[List[str]] = None
+    c: Optional[List[str]] = None
     sids: Optional[np.ndarray] = None
     dist: Optional[np.ndarray] = None
     pids: Optional[np.ndarray] = None
@@ -47,8 +47,6 @@ class QuestionAnsweringOutput(List[ModelOutput]):
         c_str = ""
         if isinstance(self.c, list):
             c_str = " ".join(self.c)
-        elif isinstance(self.c, str):
-            c_str = self.c
         return c_str
 
     @property
@@ -58,9 +56,7 @@ class QuestionAnsweringOutput(List[ModelOutput]):
         return None
 
     def attach_(self, *inputs) -> None:
-        q, c, self.sids, self.dist = inputs
-        self.q = q[0] if len(q) == 1 else q
-        self.c = c[0] if len(c) == 1 else c
+        self.q, self.c, self.sids, self.dist = inputs
 
     def popempty(self) -> Union[ModelOutput, List[ModelOutput], None]:
         prev_length = len(self)

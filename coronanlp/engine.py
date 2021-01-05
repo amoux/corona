@@ -13,7 +13,7 @@ from .core import SentenceStore
 from .dataset import CORD19
 from .engine_utils import (ModelOutput, QuestionAnsweringArguments,
                            QuestionAnsweringOutput)
-from .summarization import frequency_summarizer
+from .retrival import frequency_summarizer
 from .tokenizer import SpacySentenceTokenizer
 from .ukplab import SentenceEncoder
 
@@ -144,6 +144,7 @@ class ScibertQuestionAnsweringConfig:
 
         self.compressor = Compressor(
             model=self.model.base_model, **compressor_kwargs)
+        self.compress_ratio = self.compressor.cluster.ratio
 
         # HF QAPipeline uses index, -1 is the default for CPU.
         device_index = -1
@@ -233,7 +234,8 @@ class ScibertQuestionAnswering(ScibertQuestionAnsweringConfig):
         if mode == 'bert':
             summary = self._bert_summarizer(texts)
         if mode == 'freq':
-            summary = self._freq_summarizer(texts, nlp=self.nlp)
+            ratio = self.compress_ratio
+            summary = self._freq_summarizer(texts, ratio, nlp=self.nlp)
         return summary
 
     def squad_sample(
