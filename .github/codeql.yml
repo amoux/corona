@@ -1,0 +1,10 @@
+paths-ignore:
+  - coronanlp/tasks.py
+  - notebooks
+  - scripts
+  - models
+  - docs
+  - src
+query-filters:
+  - exclude:
+      id: py/implicit-string-concatenation-in-list
